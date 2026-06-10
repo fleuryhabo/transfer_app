@@ -3,165 +3,120 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>TransfertPro — Gestion des activités</title>
+<title>TransfertPro</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
 <style>
-  :root {
-    --bg: #0f1117;
-    --bg2: #171b26;
-    --bg3: #1e2433;
-    --border: #2a3045;
-    --border2: #3a4060;
-    --text: #e8eaf0;
-    --text2: #8892a4;
-    --text3: #545e72;
-    --accent: #4f8ef7;
-    --accent2: #2563eb;
-    --green: #22c55e;
-    --green-bg: #052e16;
-    --red: #ef4444;
-    --red-bg: #2d0a0a;
-    --amber: #f59e0b;
-    --amber-bg: #2d1f00;
-    --purple: #a78bfa;
-    --purple-bg: #1e1030;
-    --teal: #2dd4bf;
-    --teal-bg: #042f2e;
-    --radius: 8px;
-    --radius-lg: 12px;
-    --mono: 'IBM Plex Mono', monospace;
-    --sans: 'IBM Plex Sans', sans-serif;
-  }
-  * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { font-family: var(--sans); background: var(--bg); color: var(--text); min-height: 100vh; font-size: 14px; line-height: 1.6; }
-
-  /* ---- LAYOUT ---- */
-  #app { display: flex; min-height: 100vh; }
-  #sidebar { width: 220px; background: var(--bg2); border-right: 1px solid var(--border); display: flex; flex-direction: column; flex-shrink: 0; position: fixed; top: 0; bottom: 0; left: 0; overflow-y: auto; }
-  #main { margin-left: 220px; flex: 1; min-height: 100vh; }
-  @media (max-width: 768px) {
-    #sidebar { width: 100%; position: relative; flex-direction: row; flex-wrap: wrap; overflow: visible; border-right: none; border-bottom: 1px solid var(--border); }
-    #main { margin-left: 0; }
-    .sidebar-nav { display: flex; flex-wrap: wrap; flex-direction: row; padding: 4px 8px; gap: 2px; }
-    .sidebar-nav a { padding: 6px 10px; font-size: 12px; }
-    .sidebar-logo { padding: 12px 16px; border-bottom: none; }
-    .sidebar-user { display: none; }
-  }
-
-  /* ---- SIDEBAR ---- */
-  .sidebar-logo { padding: 20px 16px 16px; border-bottom: 1px solid var(--border); }
-  .logo-text { font-family: var(--mono); font-size: 13px; font-weight: 500; color: var(--accent); letter-spacing: 0.05em; }
-  .logo-sub { font-size: 11px; color: var(--text3); margin-top: 2px; }
-  .sidebar-nav { padding: 8px; flex: 1; }
-  .sidebar-nav a { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-radius: var(--radius); color: var(--text2); text-decoration: none; font-size: 13px; font-weight: 400; transition: all 0.15s; cursor: pointer; margin-bottom: 2px; }
-  .sidebar-nav a:hover { background: var(--bg3); color: var(--text); }
-  .sidebar-nav a.active { background: var(--bg3); color: var(--accent); border-left: 2px solid var(--accent); padding-left: 8px; }
-  .nav-icon { width: 16px; text-align: center; font-size: 14px; }
-  .sidebar-user { padding: 12px 16px; border-top: 1px solid var(--border); font-size: 12px; }
-  .user-name { color: var(--text); font-weight: 500; }
-  .user-role { color: var(--text3); font-size: 11px; margin-top: 1px; }
-  .btn-logout { margin-top: 8px; width: 100%; padding: 6px; background: transparent; border: 1px solid var(--border); color: var(--text2); border-radius: var(--radius); cursor: pointer; font-family: var(--sans); font-size: 12px; transition: all 0.15s; }
-  .btn-logout:hover { border-color: var(--red); color: var(--red); }
-
-  /* ---- PAGE HEADER ---- */
-  .page-header { padding: 24px 24px 0; }
-  .page-title { font-size: 20px; font-weight: 600; color: var(--text); }
-  .page-sub { color: var(--text2); font-size: 13px; margin-top: 4px; }
-  .page-content { padding: 20px 24px 40px; }
-
-  /* ---- CARDS ---- */
-  .card { background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 16px 20px; }
-  .card-title { font-size: 12px; font-weight: 500; color: var(--text2); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 12px; }
-
-  /* ---- STAT CARDS ---- */
-  .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; margin-bottom: 20px; }
-  .stat-card { background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 16px; }
-  .stat-label { font-size: 11px; color: var(--text3); font-weight: 500; text-transform: uppercase; letter-spacing: 0.06em; }
-  .stat-value { font-family: var(--mono); font-size: 22px; font-weight: 500; margin-top: 6px; }
-  .stat-devise { font-size: 12px; color: var(--text2); margin-top: 2px; }
-  .stat-green { color: var(--green); }
-  .stat-blue { color: var(--accent); }
-  .stat-amber { color: var(--amber); }
-  .stat-purple { color: var(--purple); }
-
-  /* ---- TABLES ---- */
-  .table-wrap { overflow-x: auto; border-radius: var(--radius-lg); border: 1px solid var(--border); }
-  table { width: 100%; border-collapse: collapse; font-size: 13px; }
-  th { padding: 10px 14px; text-align: left; font-size: 11px; color: var(--text3); font-weight: 500; text-transform: uppercase; letter-spacing: 0.06em; border-bottom: 1px solid var(--border); background: var(--bg2); white-space: nowrap; }
-  td { padding: 10px 14px; border-bottom: 1px solid var(--border); color: var(--text); vertical-align: middle; }
-  tr:last-child td { border-bottom: none; }
-  tr:hover td { background: rgba(79, 142, 247, 0.03); }
-  .mono { font-family: var(--mono); }
-
-  /* ---- BADGES ---- */
-  .badge { display: inline-flex; align-items: center; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 500; white-space: nowrap; }
-  .badge-green { background: var(--green-bg); color: var(--green); border: 1px solid rgba(34,197,94,0.2); }
-  .badge-red { background: var(--red-bg); color: var(--red); border: 1px solid rgba(239,68,68,0.2); }
-  .badge-blue { background: rgba(79,142,247,0.1); color: var(--accent); border: 1px solid rgba(79,142,247,0.2); }
-  .badge-amber { background: var(--amber-bg); color: var(--amber); border: 1px solid rgba(245,158,11,0.2); }
-  .badge-purple { background: var(--purple-bg); color: var(--purple); border: 1px solid rgba(167,139,250,0.2); }
-  .badge-teal { background: var(--teal-bg); color: var(--teal); border: 1px solid rgba(45,212,191,0.2); }
-  .badge-gray { background: var(--bg3); color: var(--text2); border: 1px solid var(--border); }
-
-  /* ---- FORMS ---- */
-  .form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 14px; }
-  .form-group { display: flex; flex-direction: column; gap: 5px; }
-  .form-group label { font-size: 12px; color: var(--text2); font-weight: 500; }
-  .form-group input, .form-group select, .form-group textarea {
-    background: var(--bg3); border: 1px solid var(--border); border-radius: var(--radius);
-    color: var(--text); padding: 9px 12px; font-family: var(--sans); font-size: 13px;
-    transition: border-color 0.15s; outline: none; width: 100%;
-  }
-  .form-group input:focus, .form-group select:focus, .form-group textarea:focus { border-color: var(--accent); }
-  .form-group select option { background: var(--bg3); }
-  .form-group textarea { resize: vertical; min-height: 70px; }
-  .form-hint { font-size: 11px; color: var(--text3); }
-
-  /* ---- BUTTONS ---- */
-  .btn { padding: 9px 18px; border-radius: var(--radius); font-family: var(--sans); font-size: 13px; font-weight: 500; cursor: pointer; transition: all 0.15s; border: none; display: inline-flex; align-items: center; gap: 6px; }
-  .btn-primary { background: var(--accent); color: #fff; }
-  .btn-primary:hover { background: var(--accent2); }
-  .btn-secondary { background: var(--bg3); color: var(--text); border: 1px solid var(--border); }
-  .btn-secondary:hover { border-color: var(--border2); }
-  .btn-danger { background: var(--red-bg); color: var(--red); border: 1px solid rgba(239,68,68,0.2); }
-  .btn-sm { padding: 5px 12px; font-size: 12px; }
-
-  /* ---- LOGIN ---- */
-  #login-page { display: flex; align-items: center; justify-content: center; min-height: 100vh; background: var(--bg); }
-  .login-box { background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 36px; width: 100%; max-width: 380px; }
-  .login-logo { font-family: var(--mono); font-size: 16px; color: var(--accent); font-weight: 500; margin-bottom: 6px; }
-  .login-title { font-size: 20px; font-weight: 600; margin-bottom: 4px; }
-  .login-sub { color: var(--text2); font-size: 13px; margin-bottom: 28px; }
-
-  /* ---- MISC ---- */
-  .divider { height: 1px; background: var(--border); margin: 20px 0; }
-  .section-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; flex-wrap: wrap; gap: 10px; }
-  .text-green { color: var(--green); }
-  .text-red { color: var(--red); }
-  .text-amber { color: var(--amber); }
-  .text-muted { color: var(--text2); }
-  .mt-4 { margin-top: 16px; }
-  .mt-6 { margin-top: 24px; }
-  .empty-state { padding: 40px 20px; text-align: center; color: var(--text3); font-size: 13px; }
-  .alert { padding: 10px 14px; border-radius: var(--radius); font-size: 13px; margin-bottom: 14px; }
-  .alert-error { background: var(--red-bg); color: var(--red); border: 1px solid rgba(239,68,68,0.2); }
-  .alert-success { background: var(--green-bg); color: var(--green); border: 1px solid rgba(34,197,94,0.2); }
-  .solde-positif { color: var(--green); font-family: var(--mono); }
-  .solde-zero { color: var(--text3); font-family: var(--mono); }
-  .loading { color: var(--text3); font-size: 13px; padding: 20px; text-align: center; }
-
-  /* Modal */
-  .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.7); display: flex; align-items: center; justify-content: center; z-index: 100; padding: 16px; }
-  .modal { background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 24px; width: 100%; max-width: 520px; max-height: 90vh; overflow-y: auto; }
-  .modal-title { font-size: 16px; font-weight: 600; margin-bottom: 18px; }
-  .modal-footer { display: flex; gap: 10px; justify-content: flex-end; margin-top: 20px; }
+:root {
+  --bg:#0f1117;--bg2:#171b26;--bg3:#1e2433;--border:#2a3045;--border2:#3a4060;
+  --text:#e8eaf0;--text2:#8892a4;--text3:#545e72;
+  --accent:#4f8ef7;--accent2:#2563eb;
+  --green:#22c55e;--green-bg:#052e16;
+  --red:#ef4444;--red-bg:#2d0a0a;
+  --amber:#f59e0b;--amber-bg:#2d1f00;
+  --purple:#a78bfa;--purple-bg:#1e1030;
+  --teal:#2dd4bf;--teal-bg:#042f2e;
+  --r:8px;--rl:12px;
+  --mono:'IBM Plex Mono',monospace;--sans:'IBM Plex Sans',sans-serif;
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:var(--sans);background:var(--bg);color:var(--text);min-height:100vh;font-size:14px;line-height:1.6;}
+#app{display:flex;min-height:100vh;}
+#sidebar{width:220px;background:var(--bg2);border-right:1px solid var(--border);display:flex;flex-direction:column;position:fixed;top:0;bottom:0;left:0;overflow-y:auto;z-index:10;}
+#main{margin-left:220px;flex:1;min-height:100vh;}
+@media(max-width:768px){
+  #sidebar{width:100%;position:relative;flex-direction:row;flex-wrap:wrap;overflow:visible;border-right:none;border-bottom:1px solid var(--border);}
+  #main{margin-left:0;}
+  .sidebar-nav{display:flex;flex-wrap:wrap;flex-direction:row;padding:4px 8px;gap:2px;}
+  .sidebar-nav a{padding:6px 10px;font-size:12px;}
+  .sidebar-logo{padding:12px 16px;border-bottom:none;}
+  .sidebar-user{display:none;}
+}
+.sidebar-logo{padding:20px 16px 16px;border-bottom:1px solid var(--border);}
+.logo-text{font-family:var(--mono);font-size:13px;font-weight:500;color:var(--accent);letter-spacing:.05em;}
+.logo-sub{font-size:11px;color:var(--text3);margin-top:2px;}
+.sidebar-nav{padding:8px;flex:1;}
+.sidebar-nav a{display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:var(--r);color:var(--text2);text-decoration:none;font-size:13px;transition:all .15s;cursor:pointer;margin-bottom:2px;position:relative;}
+.sidebar-nav a:hover{background:var(--bg3);color:var(--text);}
+.sidebar-nav a.active{background:var(--bg3);color:var(--accent);border-left:2px solid var(--accent);padding-left:8px;}
+.nav-icon{width:16px;text-align:center;font-size:14px;}
+.notif-badge{background:var(--red);color:#fff;border-radius:10px;font-size:10px;font-weight:600;padding:1px 6px;min-width:18px;text-align:center;margin-left:auto;}
+.sidebar-user{padding:12px 16px;border-top:1px solid var(--border);font-size:12px;}
+.user-name{color:var(--text);font-weight:500;}
+.user-role{color:var(--text3);font-size:11px;margin-top:1px;}
+.btn-logout{margin-top:8px;width:100%;padding:6px;background:transparent;border:1px solid var(--border);color:var(--text2);border-radius:var(--r);cursor:pointer;font-family:var(--sans);font-size:12px;transition:all .15s;}
+.btn-logout:hover{border-color:var(--red);color:var(--red);}
+.page-header{padding:24px 24px 0;}
+.page-title{font-size:20px;font-weight:600;}
+.page-sub{color:var(--text2);font-size:13px;margin-top:4px;}
+.page-content{padding:20px 24px 40px;}
+.card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--rl);padding:16px 20px;}
+.card-title{font-size:12px;font-weight:500;color:var(--text2);text-transform:uppercase;letter-spacing:.08em;margin-bottom:12px;}
+.stats-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-bottom:20px;}
+.stat-card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--rl);padding:16px;}
+.stat-label{font-size:11px;color:var(--text3);font-weight:500;text-transform:uppercase;letter-spacing:.06em;}
+.stat-value{font-family:var(--mono);font-size:22px;font-weight:500;margin-top:6px;}
+.stat-devise{font-size:12px;color:var(--text2);margin-top:2px;}
+.table-wrap{overflow-x:auto;border-radius:var(--rl);border:1px solid var(--border);}
+table{width:100%;border-collapse:collapse;font-size:13px;}
+th{padding:10px 14px;text-align:left;font-size:11px;color:var(--text3);font-weight:500;text-transform:uppercase;letter-spacing:.06em;border-bottom:1px solid var(--border);background:var(--bg2);white-space:nowrap;}
+td{padding:10px 14px;border-bottom:1px solid var(--border);color:var(--text);vertical-align:middle;}
+tr:last-child td{border-bottom:none;}
+tr:hover td{background:rgba(79,142,247,.03);}
+.mono{font-family:var(--mono);}
+.badge{display:inline-flex;align-items:center;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:500;white-space:nowrap;}
+.badge-green{background:var(--green-bg);color:var(--green);border:1px solid rgba(34,197,94,.2);}
+.badge-red{background:var(--red-bg);color:var(--red);border:1px solid rgba(239,68,68,.2);}
+.badge-blue{background:rgba(79,142,247,.1);color:var(--accent);border:1px solid rgba(79,142,247,.2);}
+.badge-amber{background:var(--amber-bg);color:var(--amber);border:1px solid rgba(245,158,11,.2);}
+.badge-purple{background:var(--purple-bg);color:var(--purple);border:1px solid rgba(167,139,250,.2);}
+.badge-teal{background:var(--teal-bg);color:var(--teal);border:1px solid rgba(45,212,191,.2);}
+.badge-gray{background:var(--bg3);color:var(--text2);border:1px solid var(--border);}
+.badge-strikethrough{text-decoration:line-through;opacity:.5;}
+.form-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:14px;}
+.form-group{display:flex;flex-direction:column;gap:5px;}
+.form-group label{font-size:12px;color:var(--text2);font-weight:500;}
+.form-group input,.form-group select,.form-group textarea{background:var(--bg3);border:1px solid var(--border);border-radius:var(--r);color:var(--text);padding:9px 12px;font-family:var(--sans);font-size:13px;transition:border-color .15s;outline:none;width:100%;}
+.form-group input:focus,.form-group select:focus,.form-group textarea:focus{border-color:var(--accent);}
+.form-group select option{background:var(--bg3);}
+.form-group textarea{resize:vertical;min-height:70px;}
+.form-hint{font-size:11px;color:var(--text3);}
+.btn{padding:9px 18px;border-radius:var(--r);font-family:var(--sans);font-size:13px;font-weight:500;cursor:pointer;transition:all .15s;border:none;display:inline-flex;align-items:center;gap:6px;}
+.btn-primary{background:var(--accent);color:#fff;}
+.btn-primary:hover{background:var(--accent2);}
+.btn-secondary{background:var(--bg3);color:var(--text);border:1px solid var(--border);}
+.btn-secondary:hover{border-color:var(--border2);}
+.btn-danger{background:var(--red-bg);color:var(--red);border:1px solid rgba(239,68,68,.2);}
+.btn-danger:hover{background:rgba(239,68,68,.2);}
+.btn-sm{padding:5px 12px;font-size:12px;}
+.section-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:10px;}
+.mt-4{margin-top:16px;}.mt-6{margin-top:24px;}
+.text-green{color:var(--green);}.text-red{color:var(--red);}.text-amber{color:var(--amber);}.text-muted{color:var(--text2);}
+.empty-state{padding:40px 20px;text-align:center;color:var(--text3);font-size:13px;}
+.alert{padding:10px 14px;border-radius:var(--r);font-size:13px;margin-bottom:14px;}
+.alert-error{background:var(--red-bg);color:var(--red);border:1px solid rgba(239,68,68,.2);}
+.alert-success{background:var(--green-bg);color:var(--green);border:1px solid rgba(34,197,94,.2);}
+.alert-info{background:rgba(79,142,247,.1);color:var(--accent);border:1px solid rgba(79,142,247,.2);}
+.loading{color:var(--text3);font-size:13px;padding:20px;text-align:center;}
+/* Login */
+#login-page{display:flex;align-items:center;justify-content:center;min-height:100vh;}
+.login-box{background:var(--bg2);border:1px solid var(--border);border-radius:var(--rl);padding:36px;width:100%;max-width:380px;}
+.login-logo{font-family:var(--mono);font-size:16px;color:var(--accent);font-weight:500;margin-bottom:6px;}
+.login-title{font-size:20px;font-weight:600;margin-bottom:4px;}
+.login-sub{color:var(--text2);font-size:13px;margin-bottom:28px;}
+/* Modal */
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.7);display:flex;align-items:center;justify-content:center;z-index:100;padding:16px;}
+.modal{background:var(--bg2);border:1px solid var(--border);border-radius:var(--rl);padding:24px;width:100%;max-width:520px;max-height:90vh;overflow-y:auto;}
+.modal-title{font-size:16px;font-weight:600;margin-bottom:18px;}
+.modal-footer{display:flex;gap:10px;justify-content:flex-end;margin-top:20px;}
+/* Changement de mot de passe */
+#change-mdp-overlay{position:fixed;inset:0;background:rgba(0,0,0,.85);display:flex;align-items:center;justify-content:center;z-index:200;padding:16px;}
+.op-annulee td{opacity:.45;}
 </style>
 </head>
 <body>
 
-<!-- ============ LOGIN ============ -->
+<!-- LOGIN -->
 <div id="login-page" style="display:none">
   <div class="login-box">
     <div class="login-logo">TransfertPro</div>
@@ -169,21 +124,36 @@
     <div class="login-sub">Accès réservé aux membres de l'équipe</div>
     <div id="login-error" class="alert alert-error" style="display:none"></div>
     <div class="form-group" style="margin-bottom:14px">
-      <label>Sélectionnez votre profil</label>
-      <select id="login-user-select">
-        <option value="">Chargement...</option>
-      </select>
+      <label>Votre nom</label>
+      <select id="login-user-select"><option value="">Chargement...</option></select>
     </div>
     <div class="form-group" style="margin-bottom:20px">
-      <label>Code d'accès</label>
-      <input type="password" id="login-code" placeholder="••••••" autocomplete="current-password">
-      <span class="form-hint">Demandez votre code à l'administrateur</span>
+      <label>Mot de passe</label>
+      <input type="password" id="login-mdp" placeholder="••••••" autocomplete="current-password">
     </div>
     <button class="btn btn-primary" style="width:100%" onclick="doLogin()">Se connecter</button>
   </div>
 </div>
 
-<!-- ============ APP ============ -->
+<!-- CHANGEMENT MDP FORCÉ -->
+<div id="change-mdp-overlay" style="display:none">
+  <div class="modal">
+    <div class="modal-title">🔐 Choisissez votre mot de passe</div>
+    <div class="alert alert-info" style="margin-bottom:16px">Première connexion — vous devez choisir un mot de passe personnel.</div>
+    <div id="change-mdp-error" class="alert alert-error" style="display:none"></div>
+    <div class="form-group" style="margin-bottom:14px">
+      <label>Nouveau mot de passe</label>
+      <input type="password" id="new-mdp1" placeholder="Minimum 6 caractères">
+    </div>
+    <div class="form-group" style="margin-bottom:20px">
+      <label>Confirmer le mot de passe</label>
+      <input type="password" id="new-mdp2" placeholder="Répétez le mot de passe">
+    </div>
+    <button class="btn btn-primary" style="width:100%" onclick="submitChangeMdp()">Enregistrer et continuer</button>
+  </div>
+</div>
+
+<!-- APP -->
 <div id="app" style="display:none">
   <div id="sidebar">
     <div class="sidebar-logo">
@@ -197,7 +167,9 @@
       <a onclick="showPage('soldes')" id="nav-soldes"><span class="nav-icon">◎</span> Soldes équipe</a>
       <a onclick="showPage('cloture')" id="nav-cloture"><span class="nav-icon">✓</span> Clôture du jour</a>
       <a onclick="showPage('taux')" id="nav-taux"><span class="nav-icon">⇄</span> Taux de change</a>
+      <a onclick="showPage('notifications')" id="nav-notifications"><span class="nav-icon">🔔</span> Notifications <span id="notif-badge" class="notif-badge" style="display:none">0</span></a>
       <a onclick="showPage('admin')" id="nav-admin" class="nav-admin-only"><span class="nav-icon">⚙</span> Administration</a>
+      <a onclick="showPage('mon-mdp')" id="nav-mon-mdp"><span class="nav-icon">🔑</span> Mon mot de passe</a>
     </nav>
     <div class="sidebar-user">
       <div class="user-name" id="sidebar-username">—</div>
@@ -213,650 +185,663 @@
     <div id="page-soldes" style="display:none"></div>
     <div id="page-cloture" style="display:none"></div>
     <div id="page-taux" style="display:none"></div>
+    <div id="page-notifications" style="display:none"></div>
     <div id="page-admin" style="display:none"></div>
+    <div id="page-mon-mdp" style="display:none"></div>
   </div>
 </div>
 
-<!-- ============ MODAL OPÉRATION ============ -->
+<!-- MODAL OPÉRATION -->
 <div id="modal-overlay" class="modal-overlay" style="display:none" onclick="if(event.target===this)closeModal()">
   <div class="modal">
     <div class="modal-title" id="modal-title">Nouvelle opération</div>
     <div id="modal-body"></div>
     <div class="modal-footer">
       <button class="btn btn-secondary" onclick="closeModal()">Annuler</button>
-      <button class="btn btn-primary" id="modal-submit" onclick="submitOperation()">Enregistrer</button>
+      <button class="btn btn-primary" onclick="submitOperation()">Enregistrer</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL ANNULATION -->
+<div id="annul-overlay" class="modal-overlay" style="display:none" onclick="if(event.target===this)closeAnnul()">
+  <div class="modal">
+    <div class="modal-title">Annuler une opération</div>
+    <div id="annul-info" style="background:var(--bg3);border-radius:var(--r);padding:12px;margin-bottom:16px;font-size:13px;"></div>
+    <div class="form-group">
+      <label>Motif de l'annulation *</label>
+      <textarea id="annul-motif" placeholder="Expliquez pourquoi vous annulez cette opération..." style="min-height:80px"></textarea>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeAnnul()">Retour</button>
+      <button class="btn btn-danger" onclick="submitAnnulation()">Confirmer l'annulation</button>
     </div>
   </div>
 </div>
 
 <script>
 // ============================================================
-// CONFIGURATION — Remplacez ces valeurs par les vôtres
+// CONFIG — Remplacez par vos valeurs Supabase
 // ============================================================
 const SUPABASE_URL = 'https://gpiicaaxtsmcdoyuobeh.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdwaWljYWF4dHNtY2RveXVvYmVoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NDQzNjUsImV4cCI6MjA5NjUyMDM2NX0.2NTpTerkZGYB3YkizHVn16Dieo0fBQQ6ObJ6L8Inmbg';
-const CODE_ACCES = '3538'; // Changez ce code !
 
-// ============================================================
-// INITIALISATION
-// ============================================================
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-
 let currentUser = null;
 let allUsers = [];
 let currentModalType = null;
+let currentAnnulOp = null;
 
-const DEVISES = ['USD', 'EUR', 'BIF', 'KES', 'RWF', 'CDF'];
+const DEVISES = ['USD','EUR','BIF','KES','RWF','CDF'];
+
+// Opérations par rôle
+const OPS_ADMIN = ['argent_recu','envoi_employe','depot_float','retrait_float','depense','conversion'];
+const OPS_AGENT = ['argent_recu','distribution_beneficiaire','mobile_money_entrant','mobile_money_sortant','commission','depense','conversion'];
+
 const TYPES_OP = {
-  argent_recu: { label: 'Argent reçu d\'un client', color: 'green', signe: '+' },
-  envoi_employe: { label: 'Envoi à un employé', color: 'blue', signe: '→' },
-  distribution_beneficiaire: { label: 'Distribution bénéficiaire', color: 'teal', signe: '→' },
-  mobile_money_entrant: { label: 'Dépôt Mobile Money', color: 'purple', signe: '+' },
-  mobile_money_sortant: { label: 'Retrait Mobile Money', color: 'amber', signe: '-' },
-  commission: { label: 'Commission perçue', color: 'green', signe: '+' },
-  depot_float: { label: 'Dépôt float employé', color: 'blue', signe: '+' },
-  retrait_float: { label: 'Retrait float employé', color: 'amber', signe: '-' },
-  depense: { label: 'Dépense opérationnelle', color: 'red', signe: '-' },
-  conversion: { label: 'Conversion de devises', color: 'gray', signe: '⇄' }
+  argent_recu:              { label:"Argent reçu d'un client",    color:'green',  signe:'+' },
+  envoi_employe:            { label:"Envoi à un employé",          color:'blue',   signe:'→' },
+  distribution_beneficiaire:{ label:"Distribution bénéficiaire",   color:'teal',   signe:'→' },
+  mobile_money_entrant:     { label:"Dépôt Mobile Money",          color:'purple', signe:'+' },
+  mobile_money_sortant:     { label:"Retrait Mobile Money",        color:'amber',  signe:'-' },
+  commission:               { label:"Commission perçue",           color:'green',  signe:'+' },
+  depot_float:              { label:"Dépôt float employé",         color:'blue',   signe:'+' },
+  retrait_float:            { label:"Retrait float employé",       color:'amber',  signe:'-' },
+  depense:                  { label:"Dépense opérationnelle",      color:'red',    signe:'-' },
+  conversion:               { label:"Conversion de devises",       color:'gray',   signe:'⇄' }
 };
 
-function fmtMontant(v, devise) {
-  if (!v && v !== 0) return '—';
-  return parseFloat(v).toLocaleString('fr-FR', {minimumFractionDigits: 2, maximumFractionDigits: 2}) + ' ' + (devise || '');
+function fmtM(v,d){ if(v==null)return'—'; return parseFloat(v).toLocaleString('fr-FR',{minimumFractionDigits:2,maximumFractionDigits:2})+(d?' '+d:''); }
+function fmtD(ts){ if(!ts)return'—'; return new Date(ts).toLocaleString('fr-FR',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}); }
+function badgeOp(type,annulee){
+  const t=TYPES_OP[type]||{label:type,color:'gray'};
+  const cls=annulee?'badge-strikethrough':'';
+  return `<span class="badge badge-${t.color} ${cls}">${t.label}</span>`;
 }
-function fmtDate(ts) {
-  if (!ts) return '—';
-  return new Date(ts).toLocaleString('fr-FR', {day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'});
-}
-function badgeOp(type) {
-  const t = TYPES_OP[type] || { label: type, color: 'gray' };
-  return `<span class="badge badge-${t.color}">${t.label}</span>`;
-}
+function userName(id){ return allUsers.find(u=>u.id===id)?.nom||'—'; }
+function devisesOpts(sel='USD'){ return DEVISES.map(d=>`<option value="${d}"${d===sel?' selected':''}>${d}</option>`).join(''); }
+function usersOpts(role){ return allUsers.filter(u=>role?u.role===role:true).map(u=>`<option value="${u.id}">${u.nom}</option>`).join(''); }
 
 // ============================================================
 // AUTH
 // ============================================================
-async function initApp() {
-  document.getElementById('login-page').style.display = 'flex';
-  const { data: users } = await sb.from('utilisateurs').select('*').eq('actif', true).order('nom');
-  allUsers = users || [];
-  const sel = document.getElementById('login-user-select');
-  sel.innerHTML = '<option value="">-- Choisissez votre nom --</option>' +
-    allUsers.map(u => `<option value="${u.id}">${u.nom} (${u.role})</option>`).join('');
-
-  const saved = sessionStorage.getItem('tp_user');
-  if (saved) {
-    currentUser = JSON.parse(saved);
-    showApp();
-  }
+async function initApp(){
+  document.getElementById('login-page').style.display='flex';
+  const {data:users}=await sb.from('utilisateurs').select('id,nom,role').eq('actif',true).order('nom');
+  allUsers=users||[];
+  const sel=document.getElementById('login-user-select');
+  sel.innerHTML='<option value="">-- Choisissez votre nom --</option>'+allUsers.map(u=>`<option value="${u.id}">${u.nom}</option>`).join('');
+  const saved=sessionStorage.getItem('tp_user');
+  if(saved){ currentUser=JSON.parse(saved); showApp(); }
 }
 
-async function doLogin() {
-  const uid = document.getElementById('login-user-select').value;
-  const code = document.getElementById('login-code').value;
-  const err = document.getElementById('login-error');
-  err.style.display = 'none';
-  if (!uid) { err.textContent = 'Choisissez votre profil.'; err.style.display = 'block'; return; }
-  if (code !== CODE_ACCES) { err.textContent = 'Code d\'accès incorrect.'; err.style.display = 'block'; return; }
-  currentUser = allUsers.find(u => u.id === uid);
-  sessionStorage.setItem('tp_user', JSON.stringify(currentUser));
+async function doLogin(){
+  const uid=document.getElementById('login-user-select').value;
+  const mdp=document.getElementById('login-mdp').value;
+  const err=document.getElementById('login-error');
+  err.style.display='none';
+  if(!uid){err.textContent='Choisissez votre nom.';err.style.display='block';return;}
+  if(!mdp){err.textContent='Entrez votre mot de passe.';err.style.display='block';return;}
+  const {data:user,error}=await sb.from('utilisateurs').select('*').eq('id',uid).eq('mot_de_passe',mdp).single();
+  if(error||!user){err.textContent='Mot de passe incorrect.';err.style.display='block';return;}
+  currentUser=user;
+  sessionStorage.setItem('tp_user',JSON.stringify(user));
+  if(user.doit_changer_mdp){ showChangeMdp(); return; }
   showApp();
 }
 
-function doLogout() {
-  sessionStorage.removeItem('tp_user');
-  currentUser = null;
-  document.getElementById('app').style.display = 'none';
-  document.getElementById('login-page').style.display = 'flex';
-  document.getElementById('login-code').value = '';
+function showChangeMdp(){
+  document.getElementById('login-page').style.display='none';
+  document.getElementById('change-mdp-overlay').style.display='flex';
 }
 
-function showApp() {
-  document.getElementById('login-page').style.display = 'none';
-  document.getElementById('app').style.display = 'flex';
-  document.getElementById('sidebar-username').textContent = currentUser.nom;
-  document.getElementById('sidebar-role').textContent = currentUser.role === 'admin' ? 'Administrateur' : 'Agent';
-  const adminLinks = document.querySelectorAll('.nav-admin-only');
-  adminLinks.forEach(l => l.style.display = currentUser.role === 'admin' ? 'flex' : 'none');
+async function submitChangeMdp(){
+  const p1=document.getElementById('new-mdp1').value;
+  const p2=document.getElementById('new-mdp2').value;
+  const err=document.getElementById('change-mdp-error');
+  err.style.display='none';
+  if(p1.length<6){err.textContent='Minimum 6 caractères.';err.style.display='block';return;}
+  if(p1!==p2){err.textContent='Les mots de passe ne correspondent pas.';err.style.display='block';return;}
+  const {error}=await sb.from('utilisateurs').update({mot_de_passe:p1,doit_changer_mdp:false}).eq('id',currentUser.id);
+  if(error){err.textContent='Erreur: '+error.message;err.style.display='block';return;}
+  currentUser.mot_de_passe=p1; currentUser.doit_changer_mdp=false;
+  sessionStorage.setItem('tp_user',JSON.stringify(currentUser));
+  document.getElementById('change-mdp-overlay').style.display='none';
+  showApp();
+}
+
+function doLogout(){
+  sessionStorage.removeItem('tp_user'); currentUser=null;
+  document.getElementById('app').style.display='none';
+  document.getElementById('login-page').style.display='flex';
+  document.getElementById('login-mdp').value='';
+}
+
+async function showApp(){
+  document.getElementById('login-page').style.display='none';
+  document.getElementById('app').style.display='flex';
+  document.getElementById('sidebar-username').textContent=currentUser.nom;
+  document.getElementById('sidebar-role').textContent=currentUser.role==='admin'?'Administrateur':'Agent';
+  document.querySelectorAll('.nav-admin-only').forEach(l=>l.style.display=currentUser.role==='admin'?'flex':'none');
+  await refreshNotifBadge();
   showPage('dashboard');
+}
+
+async function refreshNotifBadge(){
+  const {data}=await sb.from('notifications').select('id').eq('destinataire_id',currentUser.id).eq('lue',false);
+  const n=(data||[]).length;
+  const badge=document.getElementById('notif-badge');
+  badge.style.display=n>0?'inline':'none';
+  badge.textContent=n;
 }
 
 // ============================================================
 // NAVIGATION
 // ============================================================
-function showPage(page) {
-  document.querySelectorAll('#main > div').forEach(d => d.style.display = 'none');
-  document.querySelectorAll('.sidebar-nav a').forEach(a => a.classList.remove('active'));
-  document.getElementById('page-' + page).style.display = 'block';
-  const nav = document.getElementById('nav-' + page);
-  if (nav) nav.classList.add('active');
-  const renderers = { dashboard: renderDashboard, 'nouvelle-op': renderNouvelleOp, historique: renderHistorique, soldes: renderSoldes, cloture: renderCloture, taux: renderTaux, admin: renderAdmin };
-  if (renderers[page]) renderers[page]();
+function showPage(page){
+  document.querySelectorAll('#main>div').forEach(d=>d.style.display='none');
+  document.querySelectorAll('.sidebar-nav a').forEach(a=>a.classList.remove('active'));
+  document.getElementById('page-'+page).style.display='block';
+  const nav=document.getElementById('nav-'+page);
+  if(nav)nav.classList.add('active');
+  const R={dashboard:renderDashboard,'nouvelle-op':renderNouvelleOp,historique:renderHistorique,soldes:renderSoldes,cloture:renderCloture,taux:renderTaux,notifications:renderNotifications,admin:renderAdmin,'mon-mdp':renderMonMdp};
+  if(R[page])R[page]();
 }
 
 // ============================================================
-// PAGE : TABLEAU DE BORD
+// DASHBOARD
 // ============================================================
-async function renderDashboard() {
-  const el = document.getElementById('page-dashboard');
-  el.innerHTML = `<div class="page-header"><div class="page-title">Tableau de bord</div><div class="page-sub">Bonjour, ${currentUser.nom} — ${new Date().toLocaleDateString('fr-FR', {weekday:'long',day:'numeric',month:'long'})}</div></div><div class="page-content"><div class="loading">Chargement...</div></div>`;
-
-  const today = new Date().toISOString().split('T')[0];
-  const [{ data: ops }, { data: portefeuilles }, { data: mobiles }] = await Promise.all([
-    sb.from('operations').select('*').gte('cree_le', today + 'T00:00:00').order('cree_le', { ascending: false }),
-    sb.from('comptes_portefeuille').select('*, utilisateurs(nom, role)'),
-    sb.from('comptes_mobile_money').select('*, utilisateurs(nom)').eq('actif', true)
+async function renderDashboard(){
+  const el=document.getElementById('page-dashboard');
+  el.innerHTML=`<div class="page-content"><div class="loading">Chargement...</div></div>`;
+  const today=new Date().toISOString().split('T')[0];
+  const [{data:ops},{data:portf},{data:mob}]=await Promise.all([
+    sb.from('operations').select('*').gte('cree_le',today+'T00:00:00').eq('annulee',false).order('cree_le',{ascending:false}),
+    sb.from('comptes_portefeuille').select('*,utilisateurs(nom,role)'),
+    sb.from('comptes_mobile_money').select('*,utilisateurs(nom)').eq('actif',true)
   ]);
-
-  const totalRecu = (ops||[]).filter(o=>o.type_operation==='argent_recu').reduce((s,o)=>s+ parseFloat(o.montant),0);
-  const totalComm = (ops||[]).filter(o=>o.type_operation==='commission').reduce((s,o)=>s+parseFloat(o.montant),0);
-  const nbOps = (ops||[]).length;
-
-  // Soldes par devise pour l'utilisateur courant
-  const mesPortef = (portefeuilles||[]).filter(p=>p.utilisateur_id===currentUser.id);
-
-  let soldesHTML = mesPortef.length === 0
-    ? `<div class="empty-state">Aucun portefeuille configuré</div>`
-    : mesPortef.map(p => `
-      <div class="stat-card">
-        <div class="stat-label">${p.devise}</div>
-        <div class="stat-value stat-blue">${parseFloat(p.solde_actuel).toLocaleString('fr-FR', {minimumFractionDigits:2})}</div>
-        <div class="stat-devise">Solde physique</div>
-      </div>`).join('');
-
-  let mobSoldesHTML = (mobiles||[]).filter(m=>m.utilisateur_id===currentUser.id).map(m => `
-    <div class="stat-card">
-      <div class="stat-label">${m.plateforme}</div>
-      <div class="stat-value stat-purple">${parseFloat(m.solde_actuel).toLocaleString('fr-FR', {minimumFractionDigits:2})}</div>
-      <div class="stat-devise">${m.devise} · ${m.numero}</div>
-    </div>`).join('') || '';
-
-  let recentOps = (ops||[]).slice(0,8).map(o => {
-    const auteur = allUsers.find(u=>u.id===o.auteur_id);
-    return `<tr>
-      <td class="text-muted" style="font-size:11px">${fmtDate(o.cree_le)}</td>
-      <td>${badgeOp(o.type_operation)}</td>
-      <td class="mono">${fmtMontant(o.montant, o.devise_source)}</td>
-      <td class="text-muted">${auteur?.nom || '—'}</td>
-      <td class="text-muted" style="font-size:12px">${o.notes||'—'}</td>
-    </tr>`;
-  }).join('') || `<tr><td colspan="5" class="empty-state">Aucune opération aujourd'hui</td></tr>`;
-
-  el.innerHTML = `
-  <div class="page-header">
-    <div class="page-title">Tableau de bord</div>
-    <div class="page-sub">Bonjour, ${currentUser.nom} — ${new Date().toLocaleDateString('fr-FR', {weekday:'long',day:'numeric',month:'long'})}</div>
-  </div>
+  const totalRecu=(ops||[]).filter(o=>o.type_operation==='argent_recu').reduce((s,o)=>s+parseFloat(o.montant),0);
+  const totalComm=(ops||[]).filter(o=>o.type_operation==='commission').reduce((s,o)=>s+parseFloat(o.montant),0);
+  const mesPortf=(portf||[]).filter(p=>p.utilisateur_id===currentUser.id);
+  const mesMob=(mob||[]).filter(m=>m.utilisateur_id===currentUser.id);
+  const soldesH=mesPortf.length?mesPortf.map(p=>`<div class="stat-card"><div class="stat-label">${p.devise}</div><div class="stat-value" style="color:var(--accent)">${parseFloat(p.solde_actuel).toLocaleString('fr-FR',{minimumFractionDigits:2})}</div><div class="stat-devise">Solde physique</div></div>`).join(''):
+    `<div class="stat-card"><div class="stat-label">Aucun portefeuille</div><div class="stat-value text-muted">—</div></div>`;
+  const mobH=mesMob.map(m=>`<div class="stat-card"><div class="stat-label">${m.plateforme}</div><div class="stat-value" style="color:var(--purple)">${parseFloat(m.solde_actuel).toLocaleString('fr-FR',{minimumFractionDigits:2})}</div><div class="stat-devise">${m.devise}</div></div>`).join('');
+  const recentH=(ops||[]).slice(0,8).map(o=>`<tr>
+    <td style="font-size:11px;color:var(--text2)">${fmtD(o.cree_le)}</td>
+    <td>${badgeOp(o.type_operation,o.annulee)}</td>
+    <td class="mono">${fmtM(o.montant,o.devise_source)}</td>
+    <td class="text-muted">${userName(o.auteur_id)}</td>
+    <td class="text-muted" style="font-size:12px">${o.notes||'—'}</td>
+  </tr>`).join('')||`<tr><td colspan="5" class="empty-state">Aucune opération aujourd'hui</td></tr>`;
+  el.innerHTML=`
+  <div class="page-header"><div class="page-title">Tableau de bord</div>
+  <div class="page-sub">Bonjour, ${currentUser.nom} · ${new Date().toLocaleDateString('fr-FR',{weekday:'long',day:'numeric',month:'long'})}</div></div>
   <div class="page-content">
     <div class="stats-grid">
-      <div class="stat-card"><div class="stat-label">Opérations aujourd'hui</div><div class="stat-value stat-blue">${nbOps}</div><div class="stat-devise">Toute l'équipe</div></div>
-      <div class="stat-card"><div class="stat-label">Total reçu (USD)</div><div class="stat-value stat-green">${fmtMontant(totalRecu,'')}</div><div class="stat-devise">Aujourd'hui</div></div>
-      <div class="stat-card"><div class="stat-label">Commissions</div><div class="stat-value stat-amber">${fmtMontant(totalComm,'')}</div><div class="stat-devise">Aujourd'hui</div></div>
+      <div class="stat-card"><div class="stat-label">Opérations aujourd'hui</div><div class="stat-value" style="color:var(--accent)">${(ops||[]).length}</div><div class="stat-devise">Toute l'équipe</div></div>
+      <div class="stat-card"><div class="stat-label">Total reçu</div><div class="stat-value" style="color:var(--green)">${fmtM(totalRecu,'')}</div><div class="stat-devise">Aujourd'hui</div></div>
+      <div class="stat-card"><div class="stat-label">Commissions</div><div class="stat-value" style="color:var(--amber)">${fmtM(totalComm,'')}</div><div class="stat-devise">Aujourd'hui</div></div>
     </div>
-
-    <div class="section-header">
-      <div class="card-title" style="margin:0">Mes portefeuilles</div>
-      <button class="btn btn-primary btn-sm" onclick="showPage('nouvelle-op')">+ Nouvelle opération</button>
-    </div>
-    <div class="stats-grid">${soldesHTML}${mobSoldesHTML}</div>
-
-    <div class="mt-6">
-      <div class="section-header"><div class="card-title" style="margin:0">Opérations récentes (aujourd'hui)</div></div>
-      <div class="table-wrap">
-        <table><thead><tr><th>Heure</th><th>Type</th><th>Montant</th><th>Par</th><th>Notes</th></tr></thead>
-        <tbody>${recentOps}</tbody></table>
-      </div>
-    </div>
+    <div class="section-header"><div class="card-title" style="margin:0">Mes soldes</div>
+    <button class="btn btn-primary btn-sm" onclick="showPage('nouvelle-op')">+ Nouvelle opération</button></div>
+    <div class="stats-grid">${soldesH}${mobH}</div>
+    <div class="mt-6"><div class="section-header"><div class="card-title" style="margin:0">Opérations du jour</div></div>
+    <div class="table-wrap"><table><thead><tr><th>Heure</th><th>Type</th><th>Montant</th><th>Par</th><th>Notes</th></tr></thead>
+    <tbody>${recentH}</tbody></table></div></div>
   </div>`;
 }
 
 // ============================================================
-// PAGE : NOUVELLE OPÉRATION
+// NOUVELLE OPÉRATION (selon rôle)
 // ============================================================
-function renderNouvelleOp() {
-  const el = document.getElementById('page-nouvelle-op');
-  const cards = Object.entries(TYPES_OP).map(([key, t]) => `
-    <div onclick="openModal('${key}')" style="cursor:pointer;background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius-lg);padding:16px 20px;transition:border-color 0.15s;display:flex;align-items:center;gap:12px;"
+function renderNouvelleOp(){
+  const el=document.getElementById('page-nouvelle-op');
+  const ops=currentUser.role==='admin'?OPS_ADMIN:OPS_AGENT;
+  const cards=ops.map(key=>{
+    const t=TYPES_OP[key];
+    return `<div onclick="openModal('${key}')" style="cursor:pointer;background:var(--bg2);border:1px solid var(--border);border-radius:var(--rl);padding:16px 20px;transition:border-color .15s;display:flex;align-items:center;gap:12px"
     onmouseover="this.style.borderColor='var(--border2)'" onmouseout="this.style.borderColor='var(--border)'">
       <span class="badge badge-${t.color}" style="font-size:16px;padding:6px 10px">${t.signe}</span>
-      <div>
-        <div style="font-weight:500;font-size:13px">${t.label}</div>
-      </div>
-    </div>`).join('');
+      <div style="font-weight:500;font-size:13px">${t.label}</div>
+    </div>`;
+  }).join('');
+  el.innerHTML=`<div class="page-header"><div class="page-title">Nouvelle opération</div>
+  <div class="page-sub">Opérations disponibles pour votre rôle (${currentUser.role==='admin'?'Administrateur':'Agent'})</div></div>
+  <div class="page-content"><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:10px">${cards}</div></div>`;
+}
 
-  el.innerHTML = `
-  <div class="page-header"><div class="page-title">Nouvelle opération</div><div class="page-sub">Choisissez le type d'opération à enregistrer</div></div>
-  <div class="page-content">
-    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:10px">${cards}</div>
+// ============================================================
+// MODAL OPÉRATION
+// ============================================================
+function openModal(type){
+  currentModalType=type;
+  document.getElementById('modal-title').textContent=TYPES_OP[type].label;
+  document.getElementById('modal-body').innerHTML=buildForm(type);
+  document.getElementById('modal-overlay').style.display='flex';
+  // charger comptes mobiles si besoin
+  setTimeout(async()=>{
+    const sel=document.getElementById('f-mobile');
+    if(!sel)return;
+    const {data}=await sb.from('comptes_mobile_money').select('*,utilisateurs(nom)').eq('actif',true).eq('utilisateur_id',currentUser.id);
+    if(data)sel.innerHTML='<option value="">-- Choisir --</option>'+data.map(m=>`<option value="${m.id}">${m.plateforme} · ${m.devise} (${m.numero})</option>`).join('');
+  },50);
+}
+function closeModal(){ document.getElementById('modal-overlay').style.display='none'; currentModalType=null; }
+
+function buildForm(type){
+  const base=`<div class="form-grid">
+    <div class="form-group"><label>Montant *</label><input type="number" id="f-montant" placeholder="0.00" step="0.01" min="0"></div>
+    <div class="form-group"><label>Devise *</label><select id="f-devise">${devisesOpts()}</select></div>
   </div>`;
-}
-
-// ============================================================
-// MODAL OPÉRATIONS
-// ============================================================
-function openModal(type) {
-  currentModalType = type;
-  const t = TYPES_OP[type];
-  document.getElementById('modal-title').textContent = t.label;
-  document.getElementById('modal-body').innerHTML = buildForm(type);
-  document.getElementById('modal-overlay').style.display = 'flex';
-}
-function closeModal() {
-  document.getElementById('modal-overlay').style.display = 'none';
-  currentModalType = null;
-}
-
-function devisesOptions(selected) {
-  return DEVISES.map(d => `<option value="${d}" ${d===selected?'selected':''}>${d}</option>`).join('');
-}
-function usersOptions(filterRole) {
-  return allUsers.filter(u => filterRole ? u.role === filterRole : true)
-    .map(u => `<option value="${u.id}">${u.nom}</option>`).join('');
-}
-
-function buildForm(type) {
-  const base = `
-    <div class="form-grid">
-      <div class="form-group">
-        <label>Montant *</label>
-        <input type="number" id="f-montant" placeholder="0.00" step="0.01" min="0">
-      </div>
-      <div class="form-group">
-        <label>Devise *</label>
-        <select id="f-devise">${devisesOptions('USD')}</select>
-      </div>
-    </div>`;
-
-  const taux = `
-    <div class="form-grid" style="margin-top:10px">
-      <div class="form-group">
-        <label>Devise cible</label>
-        <select id="f-devise-cible">${devisesOptions('BIF')}</select>
-      </div>
-      <div class="form-group">
-        <label>Taux de change</label>
-        <input type="number" id="f-taux" placeholder="ex: 2900" step="0.000001">
-        <span class="form-hint">1 devise source = X devise cible</span>
-      </div>
-    </div>`;
-
-  const client = `<div class="form-group" style="margin-top:10px"><label>Nom du client</label><input type="text" id="f-client" placeholder="Nom de la personne"></div>`;
-  const benef = `<div class="form-group" style="margin-top:10px"><label>Nom du bénéficiaire</label><input type="text" id="f-benef" placeholder="Nom du bénéficiaire"></div>`;
-  const notes = `<div class="form-group" style="margin-top:10px"><label>Notes</label><textarea id="f-notes" placeholder="Remarques..."></textarea></div>`;
-
-  const agentSelect = `<div class="form-group" style="margin-top:10px"><label>Agent concerné</label><select id="f-agent"><option value="">-- Choisir --</option>${usersOptions('agent')}</select></div>`;
-  const mobileSelect = `<div class="form-group" style="margin-top:10px"><label>Compte Mobile Money</label><select id="f-mobile"><option value="">-- Choisir --</option></select></div>`;
-
-  const forms = {
-    argent_recu: base + taux + client + notes,
-    envoi_employe: base + agentSelect + notes,
-    distribution_beneficiaire: base + agentSelect + benef + notes,
-    mobile_money_entrant: base + mobileSelect + `<div class="form-group" style="margin-top:10px"><label>Commission perçue</label><input type="number" id="f-commission" placeholder="0.00" step="0.01" min="0"></div>` + notes,
-    mobile_money_sortant: base + mobileSelect + notes,
-    commission: base + notes,
-    depot_float: base + agentSelect + notes,
-    retrait_float: base + agentSelect + notes,
-    depense: base + `<div class="form-group" style="margin-top:10px"><label>Description de la dépense</label><input type="text" id="f-client" placeholder="Loyer, transport..."></div>` + notes,
-    conversion: base + taux + notes
+  const taux=`<div class="form-grid" style="margin-top:10px">
+    <div class="form-group"><label>Devise cible</label><select id="f-devise-cible">${devisesOpts('BIF')}</select></div>
+    <div class="form-group"><label>Taux (1 source = X cible)</label><input type="number" id="f-taux" placeholder="ex: 2900" step="0.000001"></div>
+  </div>`;
+  const notes=`<div class="form-group" style="margin-top:10px"><label>Notes</label><textarea id="f-notes" placeholder="Remarques..."></textarea></div>`;
+  const client=`<div class="form-group" style="margin-top:10px"><label>Nom du client</label><input type="text" id="f-client" placeholder="Nom de la personne"></div>`;
+  const benef=`<div class="form-group" style="margin-top:10px"><label>Nom du bénéficiaire</label><input type="text" id="f-benef" placeholder="Nom"></div>`;
+  const agentSel=`<div class="form-group" style="margin-top:10px"><label>Agent *</label><select id="f-agent"><option value="">-- Choisir --</option>${usersOpts('agent')}</select></div>`;
+  const mobileSel=`<div class="form-group" style="margin-top:10px"><label>Compte Mobile Money *</label><select id="f-mobile"><option value="">Chargement...</option></select></div>`;
+  const commSel=`<div class="form-group" style="margin-top:10px"><label>Commission perçue (${DEVISES[0]})</label><input type="number" id="f-commission" placeholder="0.00" step="0.01" min="0"></div>`;
+  const forms={
+    argent_recu: base+taux+client+notes,
+    envoi_employe: base+agentSel+notes,
+    distribution_beneficiaire: base+benef+notes,
+    mobile_money_entrant: base+mobileSel+commSel+notes,
+    mobile_money_sortant: base+mobileSel+notes,
+    commission: base+notes,
+    depot_float: base+agentSel+notes,
+    retrait_float: base+agentSel+notes,
+    depense: base+`<div class="form-group" style="margin-top:10px"><label>Description</label><input type="text" id="f-client" placeholder="Loyer, transport..."></div>`+notes,
+    conversion: base+taux+notes
   };
-
-  const html = forms[type] || base + notes;
-
-  // Charger les comptes mobile après rendu
-  setTimeout(async () => {
-    const sel = document.getElementById('f-mobile');
-    if (!sel) return;
-    const { data } = await sb.from('comptes_mobile_money').select('*, utilisateurs(nom)').eq('actif', true);
-    if (data) sel.innerHTML = '<option value="">-- Choisir --</option>' + data.map(m => `<option value="${m.id}">${m.utilisateurs.nom} · ${m.plateforme} (${m.devise})</option>`).join('');
-  }, 50);
-
-  return html;
+  return forms[type]||base+notes;
 }
 
-async function submitOperation() {
-  const type = currentModalType;
-  const montant = parseFloat(document.getElementById('f-montant')?.value);
-  const devise = document.getElementById('f-devise')?.value;
-  if (!montant || montant <= 0) { alert('Montant invalide'); return; }
-  if (!devise) { alert('Devise requise'); return; }
-
-  const op = {
-    auteur_id: currentUser.id,
-    type_operation: type,
-    montant,
-    devise_source: devise,
-    devise_cible: document.getElementById('f-devise-cible')?.value || null,
-    taux_change: parseFloat(document.getElementById('f-taux')?.value) || null,
-    expediteur_id: currentUser.id,
-    destinataire_id: document.getElementById('f-agent')?.value || null,
-    compte_mobile_id: document.getElementById('f-mobile')?.value || null,
-    nom_client: document.getElementById('f-client')?.value || null,
-    nom_beneficiaire: document.getElementById('f-benef')?.value || null,
-    notes: document.getElementById('f-notes')?.value || null
+async function submitOperation(){
+  const type=currentModalType;
+  const montant=parseFloat(document.getElementById('f-montant')?.value);
+  const devise=document.getElementById('f-devise')?.value;
+  if(!montant||montant<=0){alert('Montant invalide');return;}
+  if(!devise){alert('Devise requise');return;}
+  const op={
+    auteur_id:currentUser.id,type_operation:type,montant,devise_source:devise,
+    devise_cible:document.getElementById('f-devise-cible')?.value||null,
+    taux_change:parseFloat(document.getElementById('f-taux')?.value)||null,
+    expediteur_id:currentUser.id,
+    destinataire_id:document.getElementById('f-agent')?.value||null,
+    compte_mobile_id:document.getElementById('f-mobile')?.value||null,
+    nom_client:document.getElementById('f-client')?.value||null,
+    nom_beneficiaire:document.getElementById('f-benef')?.value||null,
+    notes:document.getElementById('f-notes')?.value||null,
+    annulee:false
   };
-
-  if (op.taux_change && op.devise_cible) {
-    op.montant_converti = montant * op.taux_change;
-    await sb.from('taux_change').insert({ saisi_par: currentUser.id, devise_de: devise, devise_vers: op.devise_cible, taux: op.taux_change });
+  if(op.taux_change&&op.devise_cible){
+    op.montant_converti=montant*op.taux_change;
+    await sb.from('taux_change').insert({saisi_par:currentUser.id,devise_de:devise,devise_vers:op.devise_cible,taux:op.taux_change});
   }
-
-  // Si commission mobile money
-  const comm = parseFloat(document.getElementById('f-commission')?.value);
-  const { error } = await sb.from('operations').insert(op);
-  if (error) { alert('Erreur: ' + error.message); return; }
-
-  if (comm > 0 && type === 'mobile_money_entrant') {
-    await sb.from('operations').insert({ auteur_id: currentUser.id, type_operation: 'commission', montant: comm, devise_source: devise });
+  const {error}=await sb.from('operations').insert(op);
+  if(error){alert('Erreur: '+error.message);return;}
+  const comm=parseFloat(document.getElementById('f-commission')?.value);
+  if(comm>0&&type==='mobile_money_entrant'){
+    await sb.from('operations').insert({auteur_id:currentUser.id,type_operation:'commission',montant:comm,devise_source:devise,annulee:false});
   }
-
   closeModal();
   alert('Opération enregistrée !');
   showPage('dashboard');
 }
 
 // ============================================================
-// PAGE : HISTORIQUE
+// HISTORIQUE + ANNULATION
 // ============================================================
-async function renderHistorique() {
-  const el = document.getElementById('page-historique');
-  el.innerHTML = `<div class="page-header"><div class="page-title">Historique</div><div class="page-sub">Toutes les opérations de l'équipe</div></div><div class="page-content"><div class="loading">Chargement...</div></div>`;
+async function renderHistorique(){
+  const el=document.getElementById('page-historique');
+  el.innerHTML=`<div class="page-content"><div class="loading">Chargement...</div></div>`;
+  const {data:ops}=await sb.from('operations').select('*').order('cree_le',{ascending:false}).limit(300);
+  const {data:annuls}=await sb.from('annulations').select('*');
+  const annulMap={};
+  (annuls||[]).forEach(a=>annulMap[a.operation_id]=a);
 
-  const { data: ops } = await sb.from('operations').select('*').order('cree_le', { ascending: false }).limit(200);
+  // Limite annulation : 3 jours
+  const limite=new Date(); limite.setDate(limite.getDate()-3);
 
-  const rows = (ops||[]).map(o => {
-    const auteur = allUsers.find(u=>u.id===o.auteur_id);
-    const destinataire = allUsers.find(u=>u.id===o.destinataire_id);
-    const conv = o.montant_converti ? `<br><span class="text-muted" style="font-size:11px">= ${fmtMontant(o.montant_converti, o.devise_cible)}</span>` : '';
-    return `<tr>
-      <td style="font-size:11px;color:var(--text2)">${fmtDate(o.cree_le)}</td>
-      <td>${badgeOp(o.type_operation)}</td>
-      <td class="mono">${fmtMontant(o.montant, o.devise_source)}${conv}</td>
-      <td>${o.taux_change ? `<span class="mono" style="font-size:11px">${o.taux_change}</span>` : '—'}</td>
-      <td>${auteur?.nom || '—'}</td>
-      <td>${destinataire?.nom || o.nom_client || o.nom_beneficiaire || '—'}</td>
-      <td class="text-muted" style="font-size:12px">${o.notes||'—'}</td>
+  const rows=(ops||[]).map(o=>{
+    const auteur=userName(o.auteur_id);
+    const dest=userName(o.destinataire_id)||o.nom_client||o.nom_beneficiaire||'—';
+    const conv=o.montant_converti?`<br><span class="text-muted" style="font-size:11px">= ${fmtM(o.montant_converti,o.devise_cible)}</span>`:'';
+    const annulInfo=annulMap[o.id];
+    const motifCell=annulInfo?`<span class="text-red" style="font-size:11px">✗ ${annulInfo.motif}</span>`:'';
+    // bouton annulation : auteur + dans les 3 jours + pas déjà annulée
+    const peutAnnuler=!o.annulee&&o.auteur_id===currentUser.id&&new Date(o.cree_le)>limite;
+    const btnAnnul=peutAnnuler?`<button class="btn btn-danger btn-sm" onclick="openAnnul('${o.id}','${(TYPES_OP[o.type_operation]?.label||o.type_operation).replace(/'/g,'')}',${o.montant},'${o.devise_source}')">Annuler</button>`:'';
+    return `<tr class="${o.annulee?'op-annulee':''}">
+      <td style="font-size:11px;color:var(--text2)">${fmtD(o.cree_le)}</td>
+      <td>${badgeOp(o.type_operation,o.annulee)}</td>
+      <td class="mono">${fmtM(o.montant,o.devise_source)}${conv}</td>
+      <td>${auteur}</td>
+      <td class="text-muted">${dest}</td>
+      <td>${motifCell}</td>
+      <td>${btnAnnul}</td>
     </tr>`;
-  }).join('') || `<tr><td colspan="7" class="empty-state">Aucune opération</td></tr>`;
+  }).join('')||`<tr><td colspan="7" class="empty-state">Aucune opération</td></tr>`;
 
-  el.innerHTML = `
-  <div class="page-header"><div class="page-title">Historique</div><div class="page-sub">Les 200 dernières opérations de l'équipe</div></div>
-  <div class="page-content">
-    <div class="table-wrap">
-      <table><thead><tr><th>Date</th><th>Type</th><th>Montant</th><th>Taux</th><th>Par</th><th>Pour / Client</th><th>Notes</th></tr></thead>
-      <tbody>${rows}</tbody></table>
-    </div>
-  </div>`;
+  el.innerHTML=`<div class="page-header"><div class="page-title">Historique</div>
+  <div class="page-sub">Les 300 dernières opérations · Les opérations barrées ont été annulées</div></div>
+  <div class="page-content"><div class="table-wrap"><table>
+  <thead><tr><th>Date</th><th>Type</th><th>Montant</th><th>Par</th><th>Pour/Client</th><th>Motif annulation</th><th>Action</th></tr></thead>
+  <tbody>${rows}</tbody></table></div></div>`;
+}
+
+// ---- Annulation ----
+function openAnnul(id,label,montant,devise){
+  currentAnnulOp={id,label,montant,devise};
+  document.getElementById('annul-info').innerHTML=`<strong>${label}</strong><br><span class="mono">${fmtM(montant,devise)}</span>`;
+  document.getElementById('annul-motif').value='';
+  document.getElementById('annul-overlay').style.display='flex';
+}
+function closeAnnul(){ document.getElementById('annul-overlay').style.display='none'; currentAnnulOp=null; }
+
+async function submitAnnulation(){
+  const motif=document.getElementById('annul-motif').value.trim();
+  if(!motif||motif.length<5){alert('Veuillez entrer un motif (minimum 5 caractères).');return;}
+  const {id}=currentAnnulOp;
+  const {error:e1}=await sb.from('operations').update({annulee:true}).eq('id',id);
+  if(e1){alert('Erreur: '+e1.message);return;}
+  const {error:e2}=await sb.from('annulations').insert({operation_id:id,annule_par:currentUser.id,motif});
+  if(e2){alert('Erreur: '+e2.message);return;}
+  // Notifier tous les admins
+  const admins=allUsers.filter(u=>u.role==='admin'&&u.id!==currentUser.id);
+  if(admins.length){
+    const notifs=admins.map(a=>({
+      destinataire_id:a.id,
+      type:'annulation',
+      titre:`Opération annulée par ${currentUser.nom}`,
+      message:`Type: ${currentAnnulOp.label} · Montant: ${fmtM(currentAnnulOp.montant,currentAnnulOp.devise)} · Motif: ${motif}`,
+      operation_id:id
+    }));
+    await sb.from('notifications').insert(notifs);
+  }
+  closeAnnul();
+  alert('Opération annulée et administrateurs notifiés.');
+  renderHistorique();
 }
 
 // ============================================================
-// PAGE : SOLDES DE L'ÉQUIPE
+// SOLDES
 // ============================================================
-async function renderSoldes() {
-  const el = document.getElementById('page-soldes');
-  el.innerHTML = `<div class="page-content"><div class="loading">Chargement...</div></div>`;
-
-  const [{ data: portefeuilles }, { data: mobiles }] = await Promise.all([
-    sb.from('comptes_portefeuille').select('*, utilisateurs(nom, role)'),
-    sb.from('comptes_mobile_money').select('*, utilisateurs(nom)').eq('actif', true)
+async function renderSoldes(){
+  const el=document.getElementById('page-soldes');
+  el.innerHTML=`<div class="page-content"><div class="loading">Chargement...</div></div>`;
+  const [{data:portf},{data:mob}]=await Promise.all([
+    sb.from('comptes_portefeuille').select('*,utilisateurs(nom,role)'),
+    sb.from('comptes_mobile_money').select('*,utilisateurs(nom)').eq('actif',true)
   ]);
-
-  const userCards = allUsers.map(u => {
-    const portf = (portefeuilles||[]).filter(p=>p.utilisateur_id===u.id);
-    const mob = (mobiles||[]).filter(m=>m.utilisateur_id===u.id);
-
-    const portfRows = portf.length ? portf.map(p=>`
-      <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border)">
-        <span class="badge badge-gray">${p.devise}</span>
-        <span class="mono" style="color:${parseFloat(p.solde_actuel)>0?'var(--green)':'var(--text2)'}">${fmtMontant(p.solde_actuel,'')}</span>
-      </div>`).join('') : `<div class="text-muted" style="font-size:12px;padding:8px 0">Aucun portefeuille</div>`;
-
-    const mobRows = mob.length ? mob.map(m=>`
-      <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border)">
-        <div><span class="badge badge-purple">${m.plateforme}</span><span class="text-muted" style="font-size:11px;margin-left:6px">${m.devise}</span></div>
-        <span class="mono" style="color:var(--purple)">${fmtMontant(m.solde_actuel,'')}</span>
-      </div>`).join('') : `<div class="text-muted" style="font-size:12px;padding:8px 0">Aucun compte mobile</div>`;
-
-    const roleLabel = u.role === 'admin' ? 'Administrateur' : 'Agent';
-    return `
-    <div class="card" style="margin-bottom:16px">
-      <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
-        <div style="width:36px;height:36px;border-radius:50%;background:${u.role==='admin'?'rgba(79,142,247,0.15)':'rgba(167,139,250,0.15)'};display:flex;align-items:center;justify-content:center;font-weight:600;font-size:14px;color:${u.role==='admin'?'var(--accent)':'var(--purple)'}">${u.nom.charAt(0)}</div>
-        <div><div style="font-weight:500">${u.nom}</div><div style="font-size:11px;color:var(--text3)">${roleLabel}</div></div>
-      </div>
-      <div style="font-size:11px;color:var(--text3);margin-bottom:6px;text-transform:uppercase;letter-spacing:0.06em">Portefeuilles physiques</div>
-      ${portfRows}
-      ${mob.length ? `<div style="font-size:11px;color:var(--text3);margin:10px 0 6px;text-transform:uppercase;letter-spacing:0.06em">Comptes Mobile Money</div>${mobRows}` : ''}
+  const cards=allUsers.map(u=>{
+    const p=(portf||[]).filter(x=>x.utilisateur_id===u.id);
+    const m=(mob||[]).filter(x=>x.utilisateur_id===u.id);
+    const pRows=p.length?p.map(x=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border)">
+      <span class="badge badge-gray">${x.devise}</span>
+      <span class="mono" style="color:${parseFloat(x.solde_actuel)>0?'var(--green)':'var(--text2)'}">${fmtM(x.solde_actuel,'')}</span>
+    </div>`).join(''):`<div class="text-muted" style="font-size:12px;padding:8px 0">Aucun portefeuille</div>`;
+    const mRows=m.length?m.map(x=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border)">
+      <div><span class="badge badge-purple">${x.plateforme}</span><span class="text-muted" style="font-size:11px;margin-left:6px">${x.devise}</span></div>
+      <span class="mono" style="color:var(--purple)">${fmtM(x.solde_actuel,'')}</span>
+    </div>`).join(''):'';
+    const c=u.role==='admin'?'var(--accent)':'var(--purple)';
+    return `<div class="card"><div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
+      <div style="width:36px;height:36px;border-radius:50%;background:rgba(79,142,247,.15);display:flex;align-items:center;justify-content:center;font-weight:600;font-size:14px;color:${c}">${u.nom.charAt(0)}</div>
+      <div><div style="font-weight:500">${u.nom}</div><div style="font-size:11px;color:var(--text3)">${u.role==='admin'?'Administrateur':'Agent'}</div></div>
+    </div>
+    <div style="font-size:11px;color:var(--text3);margin-bottom:6px;text-transform:uppercase;letter-spacing:.06em">Portefeuilles physiques</div>${pRows}
+    ${m.length?`<div style="font-size:11px;color:var(--text3);margin:10px 0 6px;text-transform:uppercase;letter-spacing:.06em">Mobile Money</div>${mRows}`:''}
     </div>`;
   }).join('');
-
-  el.innerHTML = `
-  <div class="page-header"><div class="page-title">Soldes de l'équipe</div><div class="page-sub">Situation de chaque membre en temps réel</div></div>
-  <div class="page-content">
-    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:16px">${userCards}</div>
-  </div>`;
+  el.innerHTML=`<div class="page-header"><div class="page-title">Soldes de l'équipe</div><div class="page-sub">Situation de chaque membre en temps réel</div></div>
+  <div class="page-content"><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:16px">${cards}</div></div>`;
 }
 
 // ============================================================
-// PAGE : CLÔTURE JOURNALIÈRE
+// CLÔTURE
 // ============================================================
-async function renderCloture() {
-  const el = document.getElementById('page-cloture');
-  const today = new Date().toISOString().split('T')[0];
-
-  const { data: existing } = await sb.from('clotures_journalieres').select('*').eq('utilisateur_id', currentUser.id).eq('date_cloture', today).single();
-
-  const [{ data: portf }, { data: mob }] = await Promise.all([
-    sb.from('comptes_portefeuille').select('*').eq('utilisateur_id', currentUser.id),
-    sb.from('comptes_mobile_money').select('*').eq('utilisateur_id', currentUser.id).eq('actif', true)
+async function renderCloture(){
+  const el=document.getElementById('page-cloture');
+  const today=new Date().toISOString().split('T')[0];
+  const {data:existing}=await sb.from('clotures_journalieres').select('*').eq('utilisateur_id',currentUser.id).eq('date_cloture',today).maybeSingle();
+  const [{data:portf},{data:mob}]=await Promise.all([
+    sb.from('comptes_portefeuille').select('*').eq('utilisateur_id',currentUser.id),
+    sb.from('comptes_mobile_money').select('*').eq('utilisateur_id',currentUser.id).eq('actif',true)
   ]);
-
-  if (existing) {
-    const ecart = existing.ecart || {};
-    const ecartRows = Object.entries(ecart).map(([k,v])=>`
-      <div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border)">
-        <span>${k}</span><span class="mono ${parseFloat(v)===0?'text-muted':parseFloat(v)>0?'text-green':'text-red'}">${parseFloat(v)>=0?'+':''}${fmtMontant(v,'')}</span>
-      </div>`).join('');
-    el.innerHTML = `
-    <div class="page-header"><div class="page-title">Clôture du jour</div><div class="page-sub">${new Date().toLocaleDateString('fr-FR',{day:'numeric',month:'long',year:'numeric'})}</div></div>
-    <div class="page-content">
-      <div class="alert alert-success">Clôture déjà effectuée pour aujourd'hui.</div>
-      <div class="card"><div class="card-title">Écarts constatés</div>${ecartRows || '<div class="text-muted">Aucun écart</div>'}</div>
-      ${existing.notes?`<div class="card mt-4"><div class="card-title">Notes</div><div>${existing.notes}</div></div>`:''}
-    </div>`;
+  if(existing){
+    const ecart=existing.ecart||{};
+    const eRows=Object.entries(ecart).map(([k,v])=>`<div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border)">
+      <span>${k}</span><span class="mono ${parseFloat(v)===0?'text-muted':parseFloat(v)>0?'text-green':'text-red'}">${parseFloat(v)>=0?'+':''}${fmtM(v,'')}</span>
+    </div>`).join('');
+    el.innerHTML=`<div class="page-header"><div class="page-title">Clôture du jour</div><div class="page-sub">${new Date().toLocaleDateString('fr-FR',{day:'numeric',month:'long',year:'numeric'})}</div></div>
+    <div class="page-content"><div class="alert alert-success">✓ Clôture effectuée pour aujourd'hui.</div>
+    <div class="card"><div class="card-title">Écarts constatés</div>${eRows||'<div class="text-muted">Aucun écart</div>'}</div>
+    ${existing.notes?`<div class="card mt-4"><div class="card-title">Notes</div><div>${existing.notes}</div></div>`:''}</div>`;
     return;
   }
-
-  const portfInputs = (portf||[]).map(p=>`
-    <div class="form-group">
-      <label>Solde physique ${p.devise} (calculé: ${fmtMontant(p.solde_actuel,'')})</label>
-      <input type="number" id="cloture-p-${p.devise}" placeholder="${parseFloat(p.solde_actuel).toFixed(2)}" step="0.01" value="${parseFloat(p.solde_actuel).toFixed(2)}">
-    </div>`).join('');
-
-  const mobInputs = (mob||[]).map(m=>`
-    <div class="form-group">
-      <label>Solde ${m.plateforme} ${m.devise} (calculé: ${fmtMontant(m.solde_actuel,'')})</label>
-      <input type="number" id="cloture-m-${m.id}" placeholder="${parseFloat(m.solde_actuel).toFixed(2)}" step="0.01" value="${parseFloat(m.solde_actuel).toFixed(2)}">
-    </div>`).join('');
-
-  el.innerHTML = `
-  <div class="page-header"><div class="page-title">Clôture du jour</div><div class="page-sub">Déclarez vos soldes réels pour valider la journée</div></div>
+  const pInputs=(portf||[]).map(p=>`<div class="form-group">
+    <label>Physique ${p.devise} (calculé: ${fmtM(p.solde_actuel,'')})</label>
+    <input type="number" id="cp-${p.devise}" value="${parseFloat(p.solde_actuel).toFixed(2)}" step="0.01">
+  </div>`).join('');
+  const mInputs=(mob||[]).map(m=>`<div class="form-group">
+    <label>${m.plateforme} ${m.devise} (calculé: ${fmtM(m.solde_actuel,'')})</label>
+    <input type="number" id="cm-${m.id}" value="${parseFloat(m.solde_actuel).toFixed(2)}" step="0.01">
+  </div>`).join('');
+  el.innerHTML=`<div class="page-header"><div class="page-title">Clôture du jour</div><div class="page-sub">Déclarez vos soldes réels</div></div>
   <div class="page-content">
-    <div class="card">
-      <div class="card-title">Portefeuilles physiques</div>
-      <div class="form-grid">${portfInputs||'<div class="text-muted">Aucun portefeuille configuré</div>'}</div>
-    </div>
-    ${mobInputs?`<div class="card mt-4"><div class="card-title">Comptes Mobile Money</div><div class="form-grid">${mobInputs}</div></div>`:''}
-    <div class="card mt-4">
-      <div class="card-title">Notes de clôture</div>
-      <textarea id="cloture-notes" placeholder="Observations de fin de journée..."></textarea>
-    </div>
-    <div style="margin-top:16px;display:flex;gap:10px">
-      <button class="btn btn-primary" onclick="submitCloture(${JSON.stringify(portf||[])}, ${JSON.stringify(mob||[])})">Valider la clôture</button>
-    </div>
+    <div class="card"><div class="card-title">Portefeuilles physiques</div>
+    <div class="form-grid">${pInputs||'<div class="text-muted">Aucun portefeuille</div>'}</div></div>
+    ${mInputs?`<div class="card mt-4"><div class="card-title">Comptes Mobile Money</div><div class="form-grid">${mInputs}</div></div>`:''}
+    <div class="card mt-4"><div class="card-title">Notes de clôture</div><textarea id="cloture-notes" placeholder="Observations..."></textarea></div>
+    <div style="margin-top:16px"><button class="btn btn-primary" onclick="submitCloture(${JSON.stringify(portf||[])},${JSON.stringify(mob||[])})">Valider la clôture</button></div>
   </div>`;
 }
 
-async function submitCloture(portf, mob) {
-  const today = new Date().toISOString().split('T')[0];
-  const physique = {}, mobile = {}, calcule = {}, ecart = {};
-
-  portf.forEach(p => {
-    const declare = parseFloat(document.getElementById('cloture-p-' + p.devise)?.value) || 0;
-    physique[p.devise] = declare;
-    calcule['physique_' + p.devise] = parseFloat(p.solde_actuel);
-    ecart['physique_' + p.devise] = declare - parseFloat(p.solde_actuel);
+async function submitCloture(portf,mob){
+  const today=new Date().toISOString().split('T')[0];
+  const phys={},mobil={},calc={},ecart={};
+  portf.forEach(p=>{
+    const d=parseFloat(document.getElementById('cp-'+p.devise)?.value)||0;
+    phys[p.devise]=d; calc['phys_'+p.devise]=parseFloat(p.solde_actuel);
+    ecart['phys_'+p.devise]=d-parseFloat(p.solde_actuel);
   });
-  mob.forEach(m => {
-    const declare = parseFloat(document.getElementById('cloture-m-' + m.id)?.value) || 0;
-    mobile[m.plateforme + '_' + m.devise] = declare;
-    ecart['mobile_' + m.plateforme] = declare - parseFloat(m.solde_actuel);
+  mob.forEach(m=>{
+    const d=parseFloat(document.getElementById('cm-'+m.id)?.value)||0;
+    mobil[m.plateforme+'_'+m.devise]=d;
+    ecart['mob_'+m.plateforme]=d-parseFloat(m.solde_actuel);
   });
-
-  const { error } = await sb.from('clotures_journalieres').insert({
-    utilisateur_id: currentUser.id,
-    date_cloture: today,
-    solde_physique_declare: physique,
-    solde_mobile_declare: mobile,
-    solde_calcule: calcule,
-    ecart,
-    notes: document.getElementById('cloture-notes')?.value || null
-  });
-
-  if (error) { alert('Erreur: ' + error.message); return; }
-  alert('Clôture enregistrée !');
-  renderCloture();
+  const {error}=await sb.from('clotures_journalieres').insert({utilisateur_id:currentUser.id,date_cloture:today,solde_physique_declare:phys,solde_mobile_declare:mobil,solde_calcule:calc,ecart,notes:document.getElementById('cloture-notes')?.value||null});
+  if(error){alert('Erreur: '+error.message);return;}
+  alert('Clôture enregistrée !'); renderCloture();
 }
 
 // ============================================================
-// PAGE : TAUX DE CHANGE
+// TAUX DE CHANGE
 // ============================================================
-async function renderTaux() {
-  const el = document.getElementById('page-taux');
-  const { data: taux } = await sb.from('taux_change').select('*, utilisateurs(nom)').order('valable_le', { ascending: false }).limit(50);
-
-  const rows = (taux||[]).map(t => {
-    const auteur = t.utilisateurs;
-    return `<tr>
-      <td style="font-size:11px;color:var(--text2)">${fmtDate(t.valable_le)}</td>
-      <td><span class="badge badge-blue">${t.devise_de}</span></td>
-      <td><span class="badge badge-amber">${t.devise_vers}</span></td>
-      <td class="mono">${parseFloat(t.taux).toLocaleString('fr-FR', {minimumFractionDigits:4})}</td>
-      <td>${auteur?.nom||'—'}</td>
-    </tr>`;
-  }).join('') || `<tr><td colspan="5" class="empty-state">Aucun taux enregistré</td></tr>`;
-
-  el.innerHTML = `
-  <div class="page-header"><div class="page-title">Taux de change</div><div class="page-sub">Historique des taux saisis</div></div>
+async function renderTaux(){
+  const el=document.getElementById('page-taux');
+  const {data:taux}=await sb.from('taux_change').select('*,utilisateurs(nom)').order('valable_le',{ascending:false}).limit(50);
+  const rows=(taux||[]).map(t=>`<tr>
+    <td style="font-size:11px;color:var(--text2)">${fmtD(t.valable_le)}</td>
+    <td><span class="badge badge-blue">${t.devise_de}</span></td>
+    <td><span class="badge badge-amber">${t.devise_vers}</span></td>
+    <td class="mono">${parseFloat(t.taux).toLocaleString('fr-FR',{minimumFractionDigits:4})}</td>
+    <td>${t.utilisateurs?.nom||'—'}</td>
+  </tr>`).join('')||`<tr><td colspan="5" class="empty-state">Aucun taux</td></tr>`;
+  el.innerHTML=`<div class="page-header"><div class="page-title">Taux de change</div></div>
   <div class="page-content">
-    <div class="card" style="margin-bottom:20px">
-      <div class="card-title">Saisir un taux du jour</div>
-      <div class="form-grid">
-        <div class="form-group"><label>Devise source</label><select id="t-de">${devisesOptions('USD')}</select></div>
-        <div class="form-group"><label>Devise cible</label><select id="t-vers">${devisesOptions('BIF')}</select></div>
-        <div class="form-group"><label>Taux (1 source = X cible)</label><input type="number" id="t-taux" placeholder="ex: 2900" step="0.000001"></div>
+    <div class="card" style="margin-bottom:20px"><div class="card-title">Saisir un taux</div>
+    <div class="form-grid">
+      <div class="form-group"><label>De</label><select id="t-de">${devisesOpts('USD')}</select></div>
+      <div class="form-group"><label>Vers</label><select id="t-vers">${devisesOpts('BIF')}</select></div>
+      <div class="form-group"><label>Taux</label><input type="number" id="t-taux" placeholder="ex: 2900" step="0.000001"></div>
+    </div>
+    <button class="btn btn-primary" style="margin-top:12px" onclick="saveTaux()">Enregistrer</button></div>
+    <div class="table-wrap"><table><thead><tr><th>Date</th><th>De</th><th>Vers</th><th>Taux</th><th>Par</th></tr></thead>
+    <tbody>${rows}</tbody></table></div>
+  </div>`;
+}
+
+async function saveTaux(){
+  const de=document.getElementById('t-de').value,vers=document.getElementById('t-vers').value,taux=parseFloat(document.getElementById('t-taux').value);
+  if(!taux||taux<=0){alert('Taux invalide');return;}
+  if(de===vers){alert('Devises identiques');return;}
+  const {error}=await sb.from('taux_change').insert({saisi_par:currentUser.id,devise_de:de,devise_vers:vers,taux});
+  if(error){alert('Erreur: '+error.message);return;}
+  alert('Taux enregistré !'); renderTaux();
+}
+
+// ============================================================
+// NOTIFICATIONS
+// ============================================================
+async function renderNotifications(){
+  const el=document.getElementById('page-notifications');
+  el.innerHTML=`<div class="page-content"><div class="loading">Chargement...</div></div>`;
+  const {data:notifs}=await sb.from('notifications').select('*').eq('destinataire_id',currentUser.id).order('cree_le',{ascending:false});
+  // Marquer comme lues
+  if(notifs&&notifs.some(n=>!n.lue)){
+    await sb.from('notifications').update({lue:true}).eq('destinataire_id',currentUser.id).eq('lue',false);
+    document.getElementById('notif-badge').style.display='none';
+  }
+  const rows=(notifs||[]).map(n=>`
+    <div class="card" style="margin-bottom:10px;border-left:3px solid ${n.lue?'var(--border)':'var(--red)'}">
+      <div style="display:flex;justify-content:space-between;align-items:start">
+        <div style="font-weight:500;font-size:13px">${n.titre}</div>
+        <span style="font-size:11px;color:var(--text3);white-space:nowrap;margin-left:12px">${fmtD(n.cree_le)}</span>
       </div>
-      <button class="btn btn-primary" style="margin-top:12px" onclick="saveTaux()">Enregistrer le taux</button>
-    </div>
-    <div class="table-wrap">
-      <table><thead><tr><th>Date</th><th>De</th><th>Vers</th><th>Taux</th><th>Saisi par</th></tr></thead>
-      <tbody>${rows}</tbody></table>
-    </div>
-  </div>`;
-}
-
-async function saveTaux() {
-  const de = document.getElementById('t-de').value;
-  const vers = document.getElementById('t-vers').value;
-  const taux = parseFloat(document.getElementById('t-taux').value);
-  if (!taux || taux <= 0) { alert('Taux invalide'); return; }
-  if (de === vers) { alert('Les devises doivent être différentes'); return; }
-  const { error } = await sb.from('taux_change').insert({ saisi_par: currentUser.id, devise_de: de, devise_vers: vers, taux });
-  if (error) { alert('Erreur: ' + error.message); return; }
-  alert('Taux enregistré !');
-  renderTaux();
+      <div style="color:var(--text2);font-size:13px;margin-top:6px">${n.message}</div>
+    </div>`).join('')||`<div class="empty-state">Aucune notification</div>`;
+  el.innerHTML=`<div class="page-header"><div class="page-title">Notifications</div><div class="page-sub">Annulations et alertes de l'équipe</div></div>
+  <div class="page-content">${rows}</div>`;
 }
 
 // ============================================================
-// PAGE : ADMINISTRATION (admin seulement)
+// MON MOT DE PASSE
 // ============================================================
-async function renderAdmin() {
-  if (currentUser.role !== 'admin') { document.getElementById('page-admin').innerHTML = '<div class="page-content"><div class="alert alert-error">Accès réservé aux administrateurs.</div></div>'; return; }
-  const el = document.getElementById('page-admin');
+function renderMonMdp(){
+  const el=document.getElementById('page-mon-mdp');
+  el.innerHTML=`<div class="page-header"><div class="page-title">Mon mot de passe</div></div>
+  <div class="page-content"><div class="card" style="max-width:400px">
+    <div id="mdp-error" class="alert alert-error" style="display:none"></div>
+    <div id="mdp-success" class="alert alert-success" style="display:none"></div>
+    <div class="form-group" style="margin-bottom:14px"><label>Mot de passe actuel</label><input type="password" id="mdp-current" placeholder="••••••"></div>
+    <div class="form-group" style="margin-bottom:14px"><label>Nouveau mot de passe</label><input type="password" id="mdp-new1" placeholder="Minimum 6 caractères"></div>
+    <div class="form-group" style="margin-bottom:20px"><label>Confirmer</label><input type="password" id="mdp-new2" placeholder="Répétez"></div>
+    <button class="btn btn-primary" onclick="saveMonMdp()">Enregistrer</button>
+  </div></div>`;
+}
 
-  const [{ data: portf }, { data: mob }] = await Promise.all([
-    sb.from('comptes_portefeuille').select('*, utilisateurs(nom)'),
-    sb.from('comptes_mobile_money').select('*, utilisateurs(nom)')
+async function saveMonMdp(){
+  const curr=document.getElementById('mdp-current').value;
+  const n1=document.getElementById('mdp-new1').value;
+  const n2=document.getElementById('mdp-new2').value;
+  const err=document.getElementById('mdp-error');
+  const ok=document.getElementById('mdp-success');
+  err.style.display='none'; ok.style.display='none';
+  if(curr!==currentUser.mot_de_passe){err.textContent='Mot de passe actuel incorrect.';err.style.display='block';return;}
+  if(n1.length<6){err.textContent='Minimum 6 caractères.';err.style.display='block';return;}
+  if(n1!==n2){err.textContent='Les mots de passe ne correspondent pas.';err.style.display='block';return;}
+  const {error}=await sb.from('utilisateurs').update({mot_de_passe:n1,doit_changer_mdp:false}).eq('id',currentUser.id);
+  if(error){err.textContent='Erreur: '+error.message;err.style.display='block';return;}
+  currentUser.mot_de_passe=n1;
+  sessionStorage.setItem('tp_user',JSON.stringify(currentUser));
+  ok.textContent='Mot de passe mis à jour !'; ok.style.display='block';
+  document.getElementById('mdp-current').value='';
+  document.getElementById('mdp-new1').value='';
+  document.getElementById('mdp-new2').value='';
+}
+
+// ============================================================
+// ADMIN
+// ============================================================
+async function renderAdmin(){
+  if(currentUser.role!=='admin'){document.getElementById('page-admin').innerHTML='<div class="page-content"><div class="alert alert-error">Accès refusé.</div></div>';return;}
+  const el=document.getElementById('page-admin');
+  const [{data:portf},{data:mob},{data:users}]=await Promise.all([
+    sb.from('comptes_portefeuille').select('*,utilisateurs(nom)'),
+    sb.from('comptes_mobile_money').select('*,utilisateurs(nom)'),
+    sb.from('utilisateurs').select('*').order('nom')
   ]);
-
-  const portfRows = (portf||[]).map(p=>`<tr><td>${p.utilisateurs?.nom}</td><td><span class="badge badge-blue">${p.devise}</span></td><td class="mono">${fmtMontant(p.solde_actuel,'')}</td><td class="mono">${fmtMontant(p.float_initial,'')}</td></tr>`).join('') || '<tr><td colspan="4" class="empty-state">Aucun portefeuille</td></tr>';
-  const mobRows = (mob||[]).map(m=>`<tr><td>${m.utilisateurs?.nom}</td><td><span class="badge badge-purple">${m.plateforme}</span></td><td>${m.numero}</td><td class="badge badge-${m.actif?'green':'gray'}">${m.actif?'Actif':'Inactif'}</td></tr>`).join('') || '<tr><td colspan="4" class="empty-state">Aucun compte</td></tr>';
-
-  el.innerHTML = `
-  <div class="page-header"><div class="page-title">Administration</div><div class="page-sub">Gestion des comptes et utilisateurs</div></div>
+  const portfRows=(portf||[]).map(p=>`<tr><td>${p.utilisateurs?.nom}</td><td><span class="badge badge-blue">${p.devise}</span></td><td class="mono">${fmtM(p.solde_actuel,'')}</td><td class="mono">${fmtM(p.float_initial,'')}</td></tr>`).join('')||`<tr><td colspan="4" class="empty-state">Aucun portefeuille</td></tr>`;
+  const mobRows=(mob||[]).map(m=>`<tr><td>${m.utilisateurs?.nom}</td><td><span class="badge badge-purple">${m.plateforme}</span></td><td>${m.numero}</td><td><span class="badge badge-${m.actif?'green':'gray'}">${m.actif?'Actif':'Inactif'}</span></td></tr>`).join('')||`<tr><td colspan="4" class="empty-state">Aucun compte</td></tr>`;
+  const userRows=(users||[]).map(u=>`<tr>
+    <td>${u.nom}</td>
+    <td><span class="badge badge-${u.role==='admin'?'blue':'purple'}">${u.role}</span></td>
+    <td><span class="badge badge-${u.doit_changer_mdp?'amber':'green'}">${u.doit_changer_mdp?'Doit changer':'OK'}</span></td>
+    <td>${u.actif?'✓':'—'}</td>
+    <td><button class="btn btn-secondary btn-sm" onclick="resetMdp('${u.id}','${u.nom}')">Réinitialiser mdp</button></td>
+  </tr>`).join('');
+  el.innerHTML=`<div class="page-header"><div class="page-title">Administration</div></div>
   <div class="page-content">
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:20px">
       <div>
-        <div class="section-header">
-          <div class="card-title" style="margin:0">Ajouter un portefeuille</div>
-        </div>
         <div class="card">
-          <div class="form-group"><label>Utilisateur</label><select id="admin-user"><option value="">-- Choisir --</option>${usersOptions()}</select></div>
+          <div class="card-title">Ajouter un portefeuille</div>
+          <div class="form-group"><label>Utilisateur</label><select id="a-user"><option value="">--</option>${usersOpts()}</select></div>
           <div class="form-grid" style="margin-top:10px">
-            <div class="form-group"><label>Devise</label><select id="admin-devise">${devisesOptions('USD')}</select></div>
-            <div class="form-group"><label>Float initial</label><input type="number" id="admin-float" placeholder="0.00" step="0.01"></div>
+            <div class="form-group"><label>Devise</label><select id="a-devise">${devisesOpts()}</select></div>
+            <div class="form-group"><label>Float initial</label><input type="number" id="a-float" placeholder="0.00" step="0.01"></div>
           </div>
           <button class="btn btn-primary btn-sm" style="margin-top:12px" onclick="addPortefeuille()">Ajouter</button>
         </div>
-        <div class="card mt-4">
-          <div class="card-title">Portefeuilles existants</div>
-          <div class="table-wrap" style="border:none"><table><thead><tr><th>Utilisateur</th><th>Devise</th><th>Solde</th><th>Float init.</th></tr></thead><tbody>${portfRows}</tbody></table></div>
-        </div>
+        <div class="card mt-4"><div class="card-title">Portefeuilles</div>
+        <div class="table-wrap" style="border:none"><table><thead><tr><th>Utilisateur</th><th>Devise</th><th>Solde</th><th>Float init.</th></tr></thead>
+        <tbody>${portfRows}</tbody></table></div></div>
       </div>
       <div>
-        <div class="section-header"><div class="card-title" style="margin:0">Ajouter un compte Mobile Money</div></div>
         <div class="card">
-          <div class="form-group"><label>Utilisateur</label><select id="mm-user"><option value="">-- Choisir --</option>${usersOptions()}</select></div>
+          <div class="card-title">Ajouter un compte Mobile Money</div>
+          <div class="form-group"><label>Utilisateur</label><select id="mm-user"><option value="">--</option>${usersOpts()}</select></div>
           <div class="form-grid" style="margin-top:10px">
-            <div class="form-group"><label>Plateforme</label><input type="text" id="mm-plateforme" placeholder="M-Pesa, Lumicash..."></div>
-            <div class="form-group"><label>Numéro</label><input type="text" id="mm-numero" placeholder="+257..."></div>
+            <div class="form-group"><label>Plateforme</label><input type="text" id="mm-plat" placeholder="M-Pesa..."></div>
+            <div class="form-group"><label>Numéro</label><input type="text" id="mm-num" placeholder="+257..."></div>
           </div>
           <div class="form-grid" style="margin-top:10px">
-            <div class="form-group"><label>Devise</label><select id="mm-devise">${devisesOptions('BIF')}</select></div>
+            <div class="form-group"><label>Devise</label><select id="mm-devise">${devisesOpts('BIF')}</select></div>
             <div class="form-group"><label>Solde initial</label><input type="number" id="mm-solde" placeholder="0.00" step="0.01"></div>
           </div>
           <button class="btn btn-primary btn-sm" style="margin-top:12px" onclick="addMobile()">Ajouter</button>
         </div>
-        <div class="card mt-4">
-          <div class="card-title">Comptes Mobile Money</div>
-          <div class="table-wrap" style="border:none"><table><thead><tr><th>Utilisateur</th><th>Plateforme</th><th>Numéro</th><th>Statut</th></tr></thead><tbody>${mobRows}</tbody></table></div>
-        </div>
+        <div class="card mt-4"><div class="card-title">Comptes Mobile Money</div>
+        <div class="table-wrap" style="border:none"><table><thead><tr><th>Utilisateur</th><th>Plateforme</th><th>Numéro</th><th>Statut</th></tr></thead>
+        <tbody>${mobRows}</tbody></table></div></div>
       </div>
+    </div>
+    <div class="card mt-6">
+      <div class="card-title">Gestion des utilisateurs</div>
+      <div class="table-wrap" style="border:none"><table><thead><tr><th>Nom</th><th>Rôle</th><th>Mot de passe</th><th>Actif</th><th>Action</th></tr></thead>
+      <tbody>${userRows}</tbody></table></div>
     </div>
   </div>`;
 }
 
-async function addPortefeuille() {
-  const uid = document.getElementById('admin-user').value;
-  const devise = document.getElementById('admin-devise').value;
-  const float = parseFloat(document.getElementById('admin-float').value) || 0;
-  if (!uid) { alert('Choisissez un utilisateur'); return; }
-  const { error } = await sb.from('comptes_portefeuille').upsert({ utilisateur_id: uid, devise, solde_actuel: float, float_initial: float }, { onConflict: 'utilisateur_id,devise' });
-  if (error) { alert('Erreur: ' + error.message); return; }
-  alert('Portefeuille ajouté !');
+async function resetMdp(uid,nom){
+  const nouveau=prompt(`Nouveau mot de passe temporaire pour ${nom} :`);
+  if(!nouveau||nouveau.length<4){alert('Mot de passe trop court');return;}
+  const {error}=await sb.from('utilisateurs').update({mot_de_passe:nouveau,doit_changer_mdp:true}).eq('id',uid);
+  if(error){alert('Erreur: '+error.message);return;}
+  alert(`Mot de passe de ${nom} réinitialisé. Il devra le changer à sa prochaine connexion.`);
   renderAdmin();
 }
 
-async function addMobile() {
-  const uid = document.getElementById('mm-user').value;
-  const plateforme = document.getElementById('mm-plateforme').value;
-  const numero = document.getElementById('mm-numero').value;
-  const devise = document.getElementById('mm-devise').value;
-  const solde = parseFloat(document.getElementById('mm-solde').value) || 0;
-  if (!uid || !plateforme || !numero) { alert('Remplissez tous les champs'); return; }
-  const { error } = await sb.from('comptes_mobile_money').insert({ utilisateur_id: uid, plateforme, numero, devise, solde_actuel: solde });
-  if (error) { alert('Erreur: ' + error.message); return; }
-  alert('Compte Mobile Money ajouté !');
-  renderAdmin();
+async function addPortefeuille(){
+  const uid=document.getElementById('a-user').value,devise=document.getElementById('a-devise').value,fl=parseFloat(document.getElementById('a-float').value)||0;
+  if(!uid){alert('Choisissez un utilisateur');return;}
+  const {error}=await sb.from('comptes_portefeuille').upsert({utilisateur_id:uid,devise,solde_actuel:fl,float_initial:fl},{onConflict:'utilisateur_id,devise'});
+  if(error){alert('Erreur: '+error.message);return;}
+  alert('Portefeuille ajouté !'); renderAdmin();
+}
+
+async function addMobile(){
+  const uid=document.getElementById('mm-user').value,plat=document.getElementById('mm-plat').value,num=document.getElementById('mm-num').value,devise=document.getElementById('mm-devise').value,solde=parseFloat(document.getElementById('mm-solde').value)||0;
+  if(!uid||!plat||!num){alert('Remplissez tous les champs obligatoires');return;}
+  const {error}=await sb.from('comptes_mobile_money').insert({utilisateur_id:uid,plateforme:plat,numero:num,devise,solde_actuel:solde});
+  if(error){alert('Erreur: '+error.message);return;}
+  alert('Compte ajouté !'); renderAdmin();
 }
 
 // ============================================================
