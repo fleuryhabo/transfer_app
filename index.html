@@ -168,6 +168,7 @@ tr:hover td{background:rgba(79,142,247,.03);}
       <a onclick="showPage('cloture')" id="nav-cloture"><span class="nav-icon">✓</span> Clôture du jour</a>
       <a onclick="showPage('taux')" id="nav-taux"><span class="nav-icon">⇄</span> Taux de change</a>
       <a onclick="showPage('notifications')" id="nav-notifications"><span class="nav-icon">🔔</span> Notifications <span id="notif-badge" class="notif-badge" style="display:none">0</span></a>
+      <a onclick="showPage('rapports')" id="nav-rapports" class="nav-admin-only"><span class="nav-icon">📊</span> Rapports</a>
       <a onclick="showPage('admin')" id="nav-admin" class="nav-admin-only"><span class="nav-icon">⚙</span> Administration</a>
       <a onclick="showPage('mon-mdp')" id="nav-mon-mdp"><span class="nav-icon">🔑</span> Mon mot de passe</a>
     </nav>
@@ -185,6 +186,7 @@ tr:hover td{background:rgba(79,142,247,.03);}
     <div id="page-cloture" style="display:none"></div>
     <div id="page-taux" style="display:none"></div>
     <div id="page-notifications" style="display:none"></div>
+    <div id="page-rapports" style="display:none"></div>
     <div id="page-admin" style="display:none"></div>
     <div id="page-mon-mdp" style="display:none"></div>
   </div>
@@ -222,8 +224,8 @@ tr:hover td{background:rgba(79,142,247,.03);}
 // ============================================================
 // CONFIG
 // ============================================================
-const SUPABASE_URL = 'https://gpiicaaxtsmcdoyuobeh.supabase.co';
-const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdwaWljYWF4dHNtY2RveXVvYmVoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NDQzNjUsImV4cCI6MjA5NjUyMDM2NX0.2NTpTerkZGYB3YkizHVn16Dieo0fBQQ6ObJ6L8Inmbg';
+const SUPABASE_URL = 'VOTRE_URL_SUPABASE';
+const SUPABASE_ANON_KEY = 'VOTRE_ANON_KEY';
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 let currentUser = null;
@@ -235,20 +237,21 @@ let cachePortf = [];
 let cacheMob = [];
 
 const DEVISES = ['USD','EUR','BIF','KES','RWF','CDF'];
-const OPS_ADMIN = ['argent_recu','envoi_employe','depot_float','retrait_float','depense','conversion'];
+const OPS_ADMIN = ['argent_recu','envoi_employe','retrait_float','depense','conversion'];
 const OPS_AGENT = ['argent_recu','distribution_beneficiaire','mobile_money_entrant','mobile_money_sortant','commission','depense','conversion'];
 
 const TYPES_OP = {
-  argent_recu:              {label:"Argent reçu d'un client",   color:'green',  signe:'+', desc:"Le client vous remet de l'argent"},
-  envoi_employe:            {label:"Envoi à un employé",         color:'blue',   signe:'→', desc:"Vous envoyez des fonds à un agent"},
+  argent_recu:              {label:"Argent reçu d'un client",   color:'green',  signe:'+', desc:"Le client vous remet de l'argent (+ commission si applicable)"},
+  envoi_employe:            {label:"Envoi de fonds à un agent",  color:'blue',   signe:'→', desc:"Transfert client en transit OU rechargement de caisse"},
   distribution_beneficiaire:{label:"Distribution bénéficiaire",  color:'teal',   signe:'→', desc:"Vous remettez l'argent au destinataire final"},
-  mobile_money_entrant:     {label:"Dépôt Mobile Money",         color:'purple', signe:'+', desc:"Réception d'argent sur votre compte mobile"},
+  mobile_money_entrant:     {label:"Dépôt Mobile Money",         color:'purple', signe:'+', desc:"Réception d'argent sur votre compte mobile (+ commission)"},
   mobile_money_sortant:     {label:"Retrait Mobile Money",       color:'amber',  signe:'-', desc:"Envoi d'argent depuis votre compte mobile"},
-  commission:               {label:"Commission perçue",          color:'green',  signe:'+', desc:"Commission encaissée (hors Mobile Money)"},
-  depot_float:              {label:"Dépôt float agent",          color:'blue',   signe:'+', desc:"Vous alimentez la caisse d'un agent"},
+  commission:               {label:"Commission perçue",          color:'green',  signe:'+', desc:"Commission manuelle (transfert classique ou autre)"},
   retrait_float:            {label:"Retrait float agent",        color:'amber',  signe:'-', desc:"Vous récupérez des fonds d'un agent"},
   depense:                  {label:"Dépense opérationnelle",     color:'red',    signe:'-', desc:"Frais, loyer, transport..."},
-  conversion:               {label:"Conversion de devises",      color:'gray',   signe:'⇄', desc:"Échange entre deux devises de votre portefeuille"}
+  conversion:               {label:"Conversion de devises",      color:'gray',   signe:'⇄', desc:"Échange entre deux devises de votre portefeuille"},
+  commission_mobile:        {label:"Commission Mobile Money",    color:'green',  signe:'+', desc:"Générée automatiquement lors d'un dépôt Mobile Money"},
+  commission_transfert:     {label:"Commission transfert",       color:'green',  signe:'+', desc:"Générée automatiquement lors d'un argent reçu"},
 };
 
 // ============================================================
@@ -312,47 +315,34 @@ function calculerImpacts(type,params){
   const {montant,devise,deviceCible,taux,agentId,compteId,montantConverti}=params;
   switch(type){
     case 'argent_recu':
-      // L'auteur reçoit dans la devise source
-      // Si conversion, on reçoit montantConverti dans devise cible ET on débite rien (c'est de l'argent extérieur)
+      // Reçoit dans devise source ; si conversion, crédite devise cible
       if(taux&&deviceCible&&deviceCible!==devise){
-        return [
-          {type:'portf',userId:params.auteurId,devise:deviceCible,delta:montantConverti}
-        ];
+        return [{type:'portf',userId:params.auteurId,devise:deviceCible,delta:montantConverti}];
       }
       return [{type:'portf',userId:params.auteurId,devise,delta:montant}];
 
     case 'envoi_employe':
-      // Admin débite, agent crédité
+      // Admin débite, agent crédité — qu'il s'agisse d'argent client ou rechargement float
       return [
         {type:'portf',userId:params.auteurId,devise,delta:-montant},
         {type:'portf',userId:agentId,devise,delta:montant}
       ];
 
     case 'distribution_beneficiaire':
-      // Agent débite son portefeuille physique
       return [{type:'portf',userId:params.auteurId,devise,delta:-montant}];
 
     case 'mobile_money_entrant':
-      // Crédite le compte mobile
       return [{type:'mob',compteId,delta:montant}];
 
     case 'mobile_money_sortant':
-      // Débite le compte mobile
       return [{type:'mob',compteId,delta:-montant}];
 
     case 'commission':
-      // Crédite le portefeuille physique
+    case 'commission_mobile':
+    case 'commission_transfert':
       return [{type:'portf',userId:params.auteurId,devise,delta:montant}];
 
-    case 'depot_float':
-      // Admin débite, agent crédité
-      return [
-        {type:'portf',userId:params.auteurId,devise,delta:-montant},
-        {type:'portf',userId:agentId,devise,delta:montant}
-      ];
-
     case 'retrait_float':
-      // Agent débité, admin récupère
       return [
         {type:'portf',userId:agentId,devise,delta:-montant},
         {type:'portf',userId:params.auteurId,devise,delta:montant}
@@ -362,7 +352,6 @@ function calculerImpacts(type,params){
       return [{type:'portf',userId:params.auteurId,devise,delta:-montant}];
 
     case 'conversion':
-      // Débite devise source, crédite devise cible
       return [
         {type:'portf',userId:params.auteurId,devise,delta:-montant},
         {type:'portf',userId:params.auteurId,devise:deviceCible,delta:montantConverti}
@@ -670,27 +659,41 @@ function buildForm(type){
     <span id="solde-mob-val" class="solde-dispo-val">—</span>
   </div>`;
 
-  const commChamp=`<div class="form-group" style="margin-top:10px">
-    <label>Commission perçue (optionnel)</label>
+  const commMobChamp=`<div class="form-group" style="margin-top:10px">
+    <label>Commission Mobile Money perçue (optionnel)</label>
     <input type="number" id="f-commission" placeholder="0.00" step="0.01" min="0">
-    <span class="form-hint">Sera créditée automatiquement sur votre portefeuille</span>
+    <span class="form-hint">Enregistrée séparément comme "Commission Mobile Money" et créditée sur votre portefeuille</span>
+  </div>`;
+
+  const commTransfertChamp=`<div class="form-group" style="margin-top:10px">
+    <label>Commission de transfert perçue (optionnel)</label>
+    <input type="number" id="f-commission" placeholder="0.00" step="0.01" min="0">
+    <span class="form-hint">Enregistrée séparément comme "Commission transfert" et créditée sur votre portefeuille</span>
+  </div>`;
+
+  const natureEnvoi=`<div class="form-group" style="margin-top:10px">
+    <label>Nature de cet envoi *</label>
+    <select id="f-nature-envoi">
+      <option value="transit">Argent client en transit (à distribuer)</option>
+      <option value="float">Rechargement de caisse (float permanent)</option>
+    </select>
+    <span class="form-hint">Cette distinction apparaît dans les rapports</span>
   </div>`;
 
   const depenseDesc=`<div class="form-group" style="margin-top:10px"><label>Description de la dépense</label><input type="text" id="f-client" placeholder="Loyer, carburant, fournitures..."></div>`;
 
   const forms={
-    argent_recu:        `<div class="form-grid">${portfSelSimple}${montantChamp}</div>${taux}${client}${notes}`,
-    envoi_employe:      `<div class="form-grid">${portfSel}${montantChamp}</div>${soldeDispo}${agentSel}${notes}`,
-    distribution_beneficiaire: `<div class="form-grid">${portfSel}${montantChamp}</div>${soldeDispo}${benef}${notes}`,
-    mobile_money_entrant: `<div class="form-grid">${portfSelSimple}${montantChamp}</div>${mobileSel}${commChamp}${notes}`,
-    mobile_money_sortant: `<div class="form-grid">${portfSelSimple}${montantChamp}</div>${mobileSel}${notes}`,
-    commission:         `<div class="form-grid">${portfSel}${montantChamp}</div>${notes}`,
-    depot_float:        `<div class="form-grid">${portfSel}${montantChamp}</div>${soldeDispo}${agentSel}${notes}`,
-    retrait_float:      `<div class="form-grid">${portfSelSimple}${montantChamp}</div>${agentSel}${notes}`,
-    depense:            `<div class="form-grid">${portfSel}${montantChamp}</div>${soldeDispo}${depenseDesc}${notes}`,
-    conversion:         `<div class="form-grid">${portfSel}${montantChamp}</div>${soldeDispo}${taux}${notes}`
+    argent_recu:        \`<div class="form-grid">\${portfSelSimple}\${montantChamp}</div>\${taux}\${client}\${commTransfertChamp}\${notes}\`,
+    envoi_employe:      \`<div class="form-grid">\${portfSel}\${montantChamp}</div>\${soldeDispo}\${agentSel}\${natureEnvoi}\${notes}\`,
+    distribution_beneficiaire: \`<div class="form-grid">\${portfSel}\${montantChamp}</div>\${soldeDispo}\${benef}\${notes}\`,
+    mobile_money_entrant: \`<div class="form-grid">\${portfSelSimple}\${montantChamp}</div>\${mobileSel}\${commMobChamp}\${notes}\`,
+    mobile_money_sortant: \`<div class="form-grid">\${portfSelSimple}\${montantChamp}</div>\${mobileSel}\${notes}\`,
+    commission:         \`<div class="form-grid">\${portfSel}\${montantChamp}</div>\${notes}\`,
+    retrait_float:      \`<div class="form-grid">\${portfSelSimple}\${montantChamp}</div>\${agentSel}\${notes}\`,
+    depense:            \`<div class="form-grid">\${portfSel}\${montantChamp}</div>\${soldeDispo}\${depenseDesc}\${notes}\`,
+    conversion:         \`<div class="form-grid">\${portfSel}\${montantChamp}</div>\${soldeDispo}\${taux}\${notes}\`
   };
-  return forms[type]||`<div class="form-grid">${portfSel}${montantChamp}</div>${notes}`;
+  return forms[type]||\`<div class="form-grid">\${portfSel}\${montantChamp}</div>\${notes}\`;
 }
 
 // Affiche le solde disponible en temps réel dans le modal
@@ -748,7 +751,7 @@ async function submitOperation(){
   if(!devise){alert('Devise requise');return;}
 
   // Vérifications de solde avant débit
-  const typesDebit=['envoi_employe','distribution_beneficiaire','depot_float','depense','conversion'];
+  const typesDebit=['envoi_employe','distribution_beneficiaire','depense','conversion'];
   if(typesDebit.includes(type)){
     const solde=getSoldePortf(currentUser.id,devise);
     if(solde!==null&&montant>solde){
@@ -763,23 +766,31 @@ async function submitOperation(){
   const agentId=document.getElementById('f-agent')?.value||null;
   const compteId=document.getElementById('f-mobile')?.value||null;
   const comm=parseFloat(document.getElementById('f-commission')?.value)||0;
+  // Nature de l'envoi : transit (argent client) ou float (rechargement caisse)
+  const natureEnvoi=document.getElementById('f-nature-envoi')?.value||null;
+  const notesVal=document.getElementById('f-notes')?.value||null;
 
   // Vérif compte mobile pour opérations mobiles
   if(['mobile_money_entrant','mobile_money_sortant'].includes(type)&&!compteId){
     alert('Sélectionnez un compte Mobile Money');return;
   }
   // Vérif agent pour opérations admin
-  if(['envoi_employe','depot_float','retrait_float'].includes(type)&&!agentId){
+  if(['envoi_employe','retrait_float'].includes(type)&&!agentId){
     alert('Sélectionnez un agent');return;
   }
 
   btn.disabled=true;btn.textContent='Enregistrement...';
 
+  // Notes enrichies avec nature de l'envoi
+  let notesFinales=notesVal||'';
+  if(natureEnvoi==='float') notesFinales='[RECHARGEMENT FLOAT] '+(notesFinales||'');
+  else if(natureEnvoi==='transit') notesFinales='[TRANSIT CLIENT] '+(notesFinales||'');
+
   // Calcul des impacts comptables
   const params={auteurId:currentUser.id,montant,devise,deviceCible:devise_cible,taux:taux_change,agentId,compteId,montantConverti:montant_converti};
   const impacts=calculerImpacts(type,params);
 
-  // Enregistrer l'opération
+  // Enregistrer l'opération principale
   const op={
     auteur_id:currentUser.id,type_operation:type,montant,devise_source:devise,
     devise_cible,taux_change,montant_converti,
@@ -788,9 +799,8 @@ async function submitOperation(){
     compte_mobile_id:compteId||null,
     nom_client:document.getElementById('f-client')?.value||null,
     nom_beneficiaire:document.getElementById('f-benef')?.value||null,
-    notes:document.getElementById('f-notes')?.value||null,
+    notes:notesFinales||null,
     annulee:false,
-    // Stocker les impacts pour pouvoir les inverser à l'annulation
     impacts_json:JSON.stringify(impacts)
   };
 
@@ -805,10 +815,28 @@ async function submitOperation(){
   // Appliquer les impacts sur les soldes
   await appliquerImpacts(impacts);
 
-  // Commission mobile money
+  // Commission Mobile Money — type distinct pour les rapports
   if(comm>0&&type==='mobile_money_entrant'){
-    const commImpact=calculerImpacts('commission',{auteurId:currentUser.id,montant:comm,devise});
-    await sb.from('operations').insert({auteur_id:currentUser.id,type_operation:'commission',montant:comm,devise_source:devise,annulee:false,impacts_json:JSON.stringify(commImpact)});
+    const compteInfo=cacheMob.find(m=>m.id===compteId);
+    const plateforme=compteInfo?.plateforme||'Mobile Money';
+    const commImpact=calculerImpacts('commission_mobile',{auteurId:currentUser.id,montant:comm,devise});
+    await sb.from('operations').insert({
+      auteur_id:currentUser.id,type_operation:'commission_mobile',montant:comm,
+      devise_source:devise,annulee:false,impacts_json:JSON.stringify(commImpact),
+      notes:`Commission ${plateforme}`
+    });
+    await appliquerImpacts(commImpact);
+  }
+
+  // Commission sur transfert classique — type distinct pour les rapports
+  if(comm>0&&type==='argent_recu'){
+    const commImpact=calculerImpacts('commission_transfert',{auteurId:currentUser.id,montant:comm,devise});
+    await sb.from('operations').insert({
+      auteur_id:currentUser.id,type_operation:'commission_transfert',montant:comm,
+      devise_source:devise,annulee:false,impacts_json:JSON.stringify(commImpact),
+      nom_client:document.getElementById('f-client')?.value||null,
+      notes:`Commission transfert client`
+    });
     await appliquerImpacts(commImpact);
   }
 
@@ -1227,3 +1255,227 @@ initApp();
 </script>
 </body>
 </html>
+<!-- PATCH: renderRapports et navigation -->
+<script>
+// ============================================================
+// PATCH — Ajouter rapports à la navigation
+// ============================================================
+const _origShowPage = showPage;
+function showPage(page) {
+  _origShowPage(page);
+  if(page === 'rapports') renderRapports();
+}
+
+// ============================================================
+// PAGE : RAPPORTS DE BÉNÉFICES
+// ============================================================
+async function renderRapports(){
+  if(currentUser.role !== 'admin'){
+    document.getElementById('page-rapports').innerHTML='<div class="page-content"><div class="alert alert-error">Accès réservé aux administrateurs.</div></div>';
+    return;
+  }
+  const el = document.getElementById('page-rapports');
+  const today = new Date().toISOString().split('T')[0];
+  const moisDebut = today.substring(0,7) + '-01';
+
+  el.innerHTML = `
+  <div class="page-header">
+    <div class="page-title">Rapports de bénéfices</div>
+    <div class="page-sub">Commissions et gains par source, par agent, par période</div>
+  </div>
+  <div class="page-content">
+    <div class="card" style="margin-bottom:20px">
+      <div class="card-title">Sélectionner la période</div>
+      <div class="form-grid">
+        <div class="form-group"><label>Date début</label><input type="date" id="rpt-debut" value="${moisDebut}"></div>
+        <div class="form-group"><label>Date fin</label><input type="date" id="rpt-fin" value="${today}"></div>
+        <div class="form-group"><label>Agent (optionnel)</label>
+          <select id="rpt-agent">
+            <option value="">Toute l'équipe</option>
+            ${allUsers.map(u=>`<option value="${u.id}">${u.nom}</option>`).join('')}
+          </select>
+        </div>
+      </div>
+      <button class="btn btn-primary" style="margin-top:14px" onclick="genererRapport()">Générer le rapport</button>
+    </div>
+    <div id="rapport-resultat"><div class="empty-state">Sélectionnez une période et cliquez "Générer le rapport"</div></div>
+  </div>`;
+
+  // Générer automatiquement le rapport du mois
+  await genererRapport();
+}
+
+async function genererRapport(){
+  const debut = document.getElementById('rpt-debut')?.value;
+  const fin   = document.getElementById('rpt-fin')?.value;
+  const agentFilter = document.getElementById('rpt-agent')?.value;
+  const el = document.getElementById('rapport-resultat');
+  if(!debut||!fin){ el.innerHTML='<div class="alert alert-warn">Sélectionnez une période valide.</div>'; return; }
+
+  el.innerHTML = '<div class="loading">Calcul en cours...</div>';
+
+  // Types qui génèrent des revenus
+  const typesCommissions = ['commission','commission_mobile','commission_transfert'];
+  const typeDepenses = ['depense'];
+
+  let query = sb.from('operations').select('*')
+    .gte('cree_le', debut + 'T00:00:00')
+    .lte('cree_le', fin + 'T23:59:59')
+    .eq('annulee', false);
+  if(agentFilter) query = query.eq('auteur_id', agentFilter);
+
+  const {data:ops} = await query;
+  if(!ops||ops.length===0){ el.innerHTML='<div class="empty-state">Aucune opération sur cette période.</div>'; return; }
+
+  const commOps = ops.filter(o=>typesCommissions.includes(o.type_operation));
+  const depOps  = ops.filter(o=>typeDepenses.includes(o.type_operation));
+
+  // ── Totaux par type de commission ──────────────────────────
+  const parType = {};
+  commOps.forEach(o=>{
+    const k = o.type_operation;
+    if(!parType[k]) parType[k]={count:0,total:{}};
+    parType[k].count++;
+    const d = o.devise_source;
+    parType[k].total[d] = (parType[k].total[d]||0) + parseFloat(o.montant);
+  });
+
+  // ── Totaux par agent ────────────────────────────────────────
+  const parAgent = {};
+  commOps.forEach(o=>{
+    const uid = o.auteur_id;
+    if(!parAgent[uid]) parAgent[uid]={nom:userName(uid),commissions:{},nbOps:0};
+    parAgent[uid].nbOps++;
+    const d = o.devise_source;
+    parAgent[uid].commissions[d] = (parAgent[uid].commissions[d]||0) + parseFloat(o.montant);
+  });
+
+  // ── Totaux dépenses ─────────────────────────────────────────
+  const depParDevise = {};
+  depOps.forEach(o=>{
+    const d = o.devise_source;
+    depParDevise[d] = (depParDevise[d]||0) + parseFloat(o.montant);
+  });
+
+  // ── Évolution journalière ───────────────────────────────────
+  const parJour = {};
+  commOps.forEach(o=>{
+    const j = o.cree_le.substring(0,10);
+    if(!parJour[j]) parJour[j]={};
+    const d = o.devise_source;
+    parJour[j][d] = (parJour[j][d]||0) + parseFloat(o.montant);
+  });
+
+  const labelsType = {
+    commission:'Commission manuelle',
+    commission_mobile:'Commission Mobile Money',
+    commission_transfert:'Commission transfert client'
+  };
+
+  // ── Rendu HTML ──────────────────────────────────────────────
+  const totalRows = Object.entries(parType).map(([type,data])=>{
+    const montants = Object.entries(data.total).map(([d,v])=>`<span class="mono text-green">${fmtM(v,d)}</span>`).join(' + ');
+    return `<tr>
+      <td>${badgeOp(type,false)}</td>
+      <td>${data.count}</td>
+      <td>${montants}</td>
+    </tr>`;
+  }).join('') || '<tr><td colspan="3" class="empty-state">Aucune commission</td></tr>';
+
+  const agentRows = Object.values(parAgent).map(a=>{
+    const montants = Object.entries(a.commissions).map(([d,v])=>`<span class="mono text-green">${fmtM(v,d)}</span>`).join(' ');
+    return `<tr><td>${a.nom}</td><td>${a.nbOps}</td><td>${montants||'—'}</td></tr>`;
+  }).join('') || '<tr><td colspan="3" class="empty-state">Aucune donnée</td></tr>';
+
+  const depRows = Object.entries(depParDevise).map(([d,v])=>
+    `<tr><td>Dépenses</td><td>${depOps.length}</td><td><span class="mono text-red">-${fmtM(v,d)}</span></td></tr>`
+  ).join('') || '<tr><td colspan="3" class="empty-state">Aucune dépense</td></tr>';
+
+  const jourRows = Object.entries(parJour).sort().map(([j,devises])=>{
+    const montants = Object.entries(devises).map(([d,v])=>`<span class="mono">${fmtM(v,d)}</span>`).join(' ');
+    return `<tr><td>${new Date(j+'T12:00:00').toLocaleDateString('fr-FR',{weekday:'short',day:'numeric',month:'short'})}</td><td>${montants}</td></tr>`;
+  }).join('') || '<tr><td colspan="2" class="empty-state">Aucune commission</td></tr>';
+
+  // Résumé net (commissions - dépenses) par devise
+  const tousDevises = new Set([
+    ...commOps.map(o=>o.devise_source),
+    ...depOps.map(o=>o.devise_source)
+  ]);
+  const netRows = [...tousDevises].map(d=>{
+    const gains = commOps.filter(o=>o.devise_source===d).reduce((s,o)=>s+parseFloat(o.montant),0);
+    const pertes = depOps.filter(o=>o.devise_source===d).reduce((s,o)=>s+parseFloat(o.montant),0);
+    const net = gains - pertes;
+    return `<tr>
+      <td><span class="badge badge-gray">${d}</span></td>
+      <td class="mono text-green">+${fmtM(gains,'')}</td>
+      <td class="mono text-red">-${fmtM(pertes,'')}</td>
+      <td class="mono" style="font-weight:600;color:${net>=0?'var(--green)':'var(--red)'}">${net>=0?'+':''}${fmtM(net,'')}</td>
+    </tr>`;
+  }).join('') || '<tr><td colspan="4" class="empty-state">—</td></tr>';
+
+  const dateLabel = `Du ${new Date(debut+'T12:00:00').toLocaleDateString('fr-FR',{day:'numeric',month:'long',year:'numeric'})} au ${new Date(fin+'T12:00:00').toLocaleDateString('fr-FR',{day:'numeric',month:'long',year:'numeric'})}`;
+  const agentLabel = agentFilter ? ` · ${userName(agentFilter)}` : ' · Toute l\'équipe';
+
+  el.innerHTML = `
+  <div class="alert alert-info" style="margin-bottom:16px">📊 ${dateLabel}${agentLabel} · ${commOps.length} commission(s) enregistrée(s)</div>
+
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:16px">
+
+    <div class="card">
+      <div class="card-title">Résultat net par devise</div>
+      <div class="table-wrap" style="border:none">
+        <table><thead><tr><th>Devise</th><th>Gains</th><th>Dépenses</th><th>Net</th></tr></thead>
+        <tbody>${netRows}</tbody></table>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">Commissions par source</div>
+      <div class="table-wrap" style="border:none">
+        <table><thead><tr><th>Type</th><th>Nb</th><th>Montant</th></tr></thead>
+        <tbody>${totalRows}</tbody></table>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">Dépenses</div>
+      <div class="table-wrap" style="border:none">
+        <table><thead><tr><th>Catégorie</th><th>Nb</th><th>Montant</th></tr></thead>
+        <tbody>${depRows}</tbody></table>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">Commissions par agent</div>
+      <div class="table-wrap" style="border:none">
+        <table><thead><tr><th>Agent</th><th>Nb ops</th><th>Total</th></tr></thead>
+        <tbody>${agentRows}</tbody></table>
+      </div>
+    </div>
+
+  </div>
+
+  <div class="card mt-4">
+    <div class="card-title">Évolution journalière des commissions</div>
+    <div class="table-wrap" style="border:none">
+      <table><thead><tr><th>Jour</th><th>Commissions perçues</th></tr></thead>
+      <tbody>${jourRows}</tbody></table>
+    </div>
+  </div>
+
+  <div class="card mt-4">
+    <div class="card-title">Détail de toutes les commissions</div>
+    <div class="table-wrap" style="border:none">
+      <table><thead><tr><th>Date</th><th>Type</th><th>Montant</th><th>Par</th><th>Notes</th></tr></thead>
+      <tbody>${commOps.map(o=>`<tr>
+        <td style="font-size:11px;color:var(--text2)">${fmtD(o.cree_le)}</td>
+        <td>${badgeOp(o.type_operation,false)}</td>
+        <td class="mono text-green">+${fmtM(o.montant,o.devise_source)}</td>
+        <td>${userName(o.auteur_id)}</td>
+        <td class="text-muted" style="font-size:12px">${o.notes||o.nom_client||'—'}</td>
+      </tr>`).join('')||'<tr><td colspan="5" class="empty-state">Aucune commission</td></tr>'}</tbody>
+      </table>
+    </div>
+  </div>`;
+}
+</script>
