@@ -1255,11 +1255,7 @@ async function addMobile(){
 // ============================================================
 // PATCH — Ajouter rapports à la navigation
 // ============================================================
-const _origShowPage = showPage;
-function showPage(page) {
-  _origShowPage(page);
-  if(page === 'rapports') renderRapports();
-}
+
 
 // ============================================================
 // PAGE : RAPPORTS DE BÉNÉFICES
