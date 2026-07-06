@@ -224,8 +224,8 @@ tr:hover td{background:rgba(79,142,247,.03);}
 // ============================================================
 // CONFIG
 // ============================================================
-const SUPABASE_URL = 'https://gpiicaaxtsmcdoyuobeh.supabase.co';
-const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdwaWljYWF4dHNtY2RveXVvYmVoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NDQzNjUsImV4cCI6MjA5NjUyMDM2NX0.2NTpTerkZGYB3YkizHVn16Dieo0fBQQ6ObJ6L8Inmbg';
+const SUPABASE_URL = 'VOTRE_URL_SUPABASE';
+const SUPABASE_ANON_KEY = 'VOTRE_ANON_KEY';
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 let currentUser = null;
@@ -461,6 +461,7 @@ function showPage(page){
     dashboard:renderDashboard,
     'nouvelle-op':renderNouvelleOp,
     historique:renderHistorique,
+    rapports:renderRapports,
     soldes:renderSoldes,
     cloture:renderCloture,
     taux:renderTaux,
@@ -683,17 +684,17 @@ function buildForm(type){
   const depenseDesc=`<div class="form-group" style="margin-top:10px"><label>Description de la dépense</label><input type="text" id="f-client" placeholder="Loyer, carburant, fournitures..."></div>`;
 
   const forms={
-    argent_recu:        \`<div class="form-grid">\${portfSelSimple}\${montantChamp}</div>\${taux}\${client}\${commTransfertChamp}\${notes}\`,
-    envoi_employe:      \`<div class="form-grid">\${portfSel}\${montantChamp}</div>\${soldeDispo}\${agentSel}\${natureEnvoi}\${notes}\`,
-    distribution_beneficiaire: \`<div class="form-grid">\${portfSel}\${montantChamp}</div>\${soldeDispo}\${benef}\${notes}\`,
-    mobile_money_entrant: \`<div class="form-grid">\${portfSelSimple}\${montantChamp}</div>\${mobileSel}\${commMobChamp}\${notes}\`,
-    mobile_money_sortant: \`<div class="form-grid">\${portfSelSimple}\${montantChamp}</div>\${mobileSel}\${notes}\`,
-    commission:         \`<div class="form-grid">\${portfSel}\${montantChamp}</div>\${notes}\`,
-    retrait_float:      \`<div class="form-grid">\${portfSelSimple}\${montantChamp}</div>\${agentSel}\${notes}\`,
-    depense:            \`<div class="form-grid">\${portfSel}\${montantChamp}</div>\${soldeDispo}\${depenseDesc}\${notes}\`,
-    conversion:         \`<div class="form-grid">\${portfSel}\${montantChamp}</div>\${soldeDispo}\${taux}\${notes}\`
+    argent_recu:        `<div class="form-grid">${portfSelSimple}${montantChamp}</div>${taux}${client}${commTransfertChamp}${notes}`,
+    envoi_employe:      `<div class="form-grid">${portfSel}${montantChamp}</div>${soldeDispo}${agentSel}${natureEnvoi}${notes}`,
+    distribution_beneficiaire: `<div class="form-grid">${portfSel}${montantChamp}</div>${soldeDispo}${benef}${notes}`,
+    mobile_money_entrant: `<div class="form-grid">${portfSelSimple}${montantChamp}</div>${mobileSel}${commMobChamp}${notes}`,
+    mobile_money_sortant: `<div class="form-grid">${portfSelSimple}${montantChamp}</div>${mobileSel}${notes}`,
+    commission:         `<div class="form-grid">${portfSel}${montantChamp}</div>${notes}`,
+    retrait_float:      `<div class="form-grid">${portfSelSimple}${montantChamp}</div>${agentSel}${notes}`,
+    depense:            `<div class="form-grid">${portfSel}${montantChamp}</div>${soldeDispo}${depenseDesc}${notes}`,
+    conversion:         `<div class="form-grid">${portfSel}${montantChamp}</div>${soldeDispo}${taux}${notes}`
   };
-  return forms[type]||\`<div class="form-grid">\${portfSel}\${montantChamp}</div>\${notes}\`;
+  return forms[type]||`<div class="form-grid">${portfSel}${montantChamp}</div>${notes}`;
 }
 
 // Affiche le solde disponible en temps réel dans le modal
@@ -1251,12 +1252,6 @@ async function addMobile(){
 // ============================================================
 // DÉMARRAGE
 // ============================================================
-initApp();
-</script>
-</body>
-</html>
-<!-- PATCH: renderRapports et navigation -->
-<script>
 // ============================================================
 // PATCH — Ajouter rapports à la navigation
 // ============================================================
@@ -1478,4 +1473,8 @@ async function genererRapport(){
     </div>
   </div>`;
 }
+
+initApp();
 </script>
+</body>
+</html>
