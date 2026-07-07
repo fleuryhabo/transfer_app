@@ -145,7 +145,7 @@ tr:hover td{background:rgba(79,142,247,.03);}
 
 <div id="change-mdp-overlay" style="display:none">
   <div class="modal">
-    <div class="modal-title">🔐 Choisissez votre mot de passe</div>
+    <div class="modal-title">Choisissez votre mot de passe</div>
     <div class="alert alert-info" style="margin-bottom:16px">Première connexion — choisissez un mot de passe personnel.</div>
     <div id="change-mdp-error" class="alert alert-error" style="display:none"></div>
     <div class="form-group" style="margin-bottom:14px"><label>Nouveau mot de passe</label><input type="password" id="new-mdp1" placeholder="Minimum 6 caractères"></div>
@@ -167,14 +167,14 @@ tr:hover td{background:rgba(79,142,247,.03);}
       <a onclick="showPage('soldes')" id="nav-soldes"><span class="nav-icon">◎</span> Soldes équipe</a>
       <a onclick="showPage('cloture')" id="nav-cloture"><span class="nav-icon">✓</span> Clôture du jour</a>
       <a onclick="showPage('taux')" id="nav-taux"><span class="nav-icon">⇄</span> Taux de change</a>
-      <a onclick="showPage('notifications')" id="nav-notifications"><span class="nav-icon">🔔</span> Notifications <span id="notif-badge" class="notif-badge" style="display:none">0</span></a>
-      <a onclick="showPage('rapports')" id="nav-rapports" class="nav-admin-only"><span class="nav-icon">📊</span> Rapports</a>
-      <a onclick="showPage('admin')" id="nav-admin" class="nav-admin-only"><span class="nav-icon">⚙</span> Administration</a>
-      <a onclick="showPage('mon-mdp')" id="nav-mon-mdp"><span class="nav-icon">🔑</span> Mon mot de passe</a>
+      <a onclick="showPage('notifications')" id="nav-notifications"><span class="nav-icon">N</span> Notifications <span id="notif-badge" class="notif-badge" style="display:none">0</span></a>
+      <a onclick="showPage('rapports')" id="nav-rapports" class="nav-admin-only"><span class="nav-icon">R</span> Rapports</a>
+      <a onclick="showPage('admin')" id="nav-admin" class="nav-admin-only"><span class="nav-icon">A</span> Administration</a>
+      <a onclick="showPage('mon-mdp')" id="nav-mon-mdp"><span class="nav-icon">M</span> Mon mot de passe</a>
     </nav>
     <div class="sidebar-user">
-      <div class="user-name" id="sidebar-username">—</div>
-      <div class="user-role" id="sidebar-role">—</div>
+      <div class="user-name" id="sidebar-username"></div>
+      <div class="user-role" id="sidebar-role"></div>
       <button class="btn-logout" onclick="doLogout()">Déconnexion</button>
     </div>
   </div>
@@ -208,7 +208,7 @@ tr:hover td{background:rgba(79,142,247,.03);}
   <div class="modal">
     <div class="modal-title">Annuler une opération</div>
     <div id="annul-info" style="background:var(--bg3);border-radius:var(--r);padding:12px;margin-bottom:16px;font-size:13px;"></div>
-    <div class="alert alert-warn" style="margin-bottom:14px">⚠ L'annulation inversera les soldes affectés par cette opération.</div>
+    <div class="alert alert-warn" style="margin-bottom:14px">L'annulation inversera les soldes affectés par cette opération.</div>
     <div class="form-group">
       <label>Motif de l'annulation *</label>
       <textarea id="annul-motif" placeholder="Expliquez pourquoi..." style="min-height:80px"></textarea>
@@ -220,10 +220,18 @@ tr:hover td{background:rgba(79,142,247,.03);}
   </div>
 </div>
 
+<div id="confirm-overlay" class="modal-overlay" style="display:none" onclick="if(event.target===this)closeConfirm()">
+  <div class="modal" style="max-width:600px">
+    <div class="modal-title" id="confirm-title">Confirmer la réception</div>
+    <div id="confirm-body"></div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeConfirm()">Annuler</button>
+      <button class="btn btn-primary" onclick="submitConfirmation()">Confirmer la réception</button>
+    </div>
+  </div>
+</div>
+
 <script>
-// ============================================================
-// CONFIG
-// ============================================================
 const SUPABASE_URL = 'https://gpiicaaxtsmcdoyuobeh.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdwaWljYWF4dHNtY2RveXVvYmVoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NDQzNjUsImV4cCI6MjA5NjUyMDM2NX0.2NTpTerkZGYB3YkizHVn16Dieo0fBQQ6ObJ6L8Inmbg';
 
@@ -232,143 +240,83 @@ let currentUser = null;
 let allUsers = [];
 let currentModalType = null;
 let currentAnnulOp = null;
-// Cache des portefeuilles et comptes mobiles en mémoire
+let currentConfirmEnvoi = null;
 let cachePortf = [];
 let cacheMob = [];
 
 const DEVISES = ['USD','EUR','BIF','KES','RWF','CDF'];
-const OPS_ADMIN = ['argent_recu','envoi_employe','retrait_float','depense','conversion'];
-const OPS_AGENT = ['argent_recu','distribution_beneficiaire','mobile_money_entrant','mobile_money_sortant','commission','depense','conversion'];
+const OPS_ADMIN = ['argent_recu','envoi_employe','retrait_float','depense','conversion','transfert_interne'];
+const OPS_AGENT = ['distribution_beneficiaire','mobile_money_entrant','mobile_money_sortant','commission','depense','conversion','transfert_interne'];
 
 const TYPES_OP = {
-  argent_recu:              {label:"Argent reçu d'un client",   color:'green',  signe:'+', desc:"Le client vous remet de l'argent (+ commission si applicable)"},
-  envoi_employe:            {label:"Envoi de fonds à un agent",  color:'blue',   signe:'→', desc:"Transfert client en transit OU rechargement de caisse"},
-  distribution_beneficiaire:{label:"Distribution bénéficiaire",  color:'teal',   signe:'→', desc:"Vous remettez l'argent au destinataire final"},
-  mobile_money_entrant:     {label:"Dépôt Mobile Money",         color:'purple', signe:'+', desc:"Réception d'argent sur votre compte mobile (+ commission)"},
-  mobile_money_sortant:     {label:"Retrait Mobile Money",       color:'amber',  signe:'-', desc:"Envoi d'argent depuis votre compte mobile"},
-  commission:               {label:"Commission perçue",          color:'green',  signe:'+', desc:"Commission manuelle (transfert classique ou autre)"},
-  retrait_float:            {label:"Retrait float agent",        color:'amber',  signe:'-', desc:"Vous récupérez des fonds d'un agent"},
-  depense:                  {label:"Dépense opérationnelle",     color:'red',    signe:'-', desc:"Frais, loyer, transport..."},
-  conversion:               {label:"Conversion de devises",      color:'gray',   signe:'⇄', desc:"Échange entre deux devises de votre portefeuille"},
-  commission_mobile:        {label:"Commission Mobile Money",    color:'green',  signe:'+', desc:"Générée automatiquement lors d'un dépôt Mobile Money"},
-  commission_transfert:     {label:"Commission transfert",       color:'green',  signe:'+', desc:"Générée automatiquement lors d'un argent reçu"},
+  argent_recu:              {label:"Argent recu d'un client",    color:'green',  signe:'+', desc:"Le client vous remet de l'argent"},
+  envoi_employe:            {label:"Envoi de fonds a un agent",   color:'blue',   signe:String.fromCharCode(8594), desc:"Transfert client en transit ou rechargement float"},
+  distribution_beneficiaire:{label:"Distribution beneficiaire",   color:'teal',   signe:String.fromCharCode(8594), desc:"Remise de l'argent au destinataire final"},
+  mobile_money_entrant:     {label:"Depot Mobile Money",          color:'purple', signe:'+', desc:"Reception d'argent sur votre compte mobile"},
+  mobile_money_sortant:     {label:"Retrait Mobile Money",        color:'amber',  signe:'-', desc:"Envoi d'argent depuis votre compte mobile"},
+  commission:               {label:"Commission percue",           color:'green',  signe:'+', desc:"Commission manuelle"},
+  commission_mobile:        {label:"Commission Mobile Money",     color:'green',  signe:'+', desc:"Commission generee lors d'un depot Mobile Money"},
+  commission_transfert:     {label:"Commission transfert",        color:'green',  signe:'+', desc:"Commission sur transfert classique"},
+  retrait_float:            {label:"Retrait float agent",         color:'amber',  signe:'-', desc:"Recuperer des fonds d'un agent"},
+  depense:                  {label:"Depense operationnelle",      color:'red',    signe:'-', desc:"Frais, loyer, transport..."},
+  conversion:               {label:"Conversion de devises",       color:'gray',   signe:String.fromCharCode(8644), desc:"Echange entre deux devises"},
+  transfert_interne:        {label:"Transfert interne",           color:'blue',   signe:String.fromCharCode(8644), desc:"Portefeuille vers Mobile Money ou inversement"}
 };
 
-// ============================================================
-// UTILITAIRES
-// ============================================================
-const fmtM=(v,d)=>v==null?'—':parseFloat(v).toLocaleString('fr-FR',{minimumFractionDigits:2,maximumFractionDigits:2})+(d?' '+d:'');
-const fmtD=ts=>!ts?'—':new Date(ts).toLocaleString('fr-FR',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'});
-const userName=id=>allUsers.find(u=>u.id===id)?.nom||'—';
+const fmtM=(v,d)=>v==null?'--':parseFloat(v).toLocaleString('fr-FR',{minimumFractionDigits:2,maximumFractionDigits:2})+(d?' '+d:'');
+const fmtD=ts=>!ts?'--':new Date(ts).toLocaleString('fr-FR',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'});
+const userName=id=>allUsers.find(u=>u.id===id)?.nom||'--';
 const devisesOpts=(sel='USD')=>DEVISES.map(d=>`<option value="${d}"${d===sel?' selected':''}>${d}</option>`).join('');
 const usersOpts=role=>allUsers.filter(u=>role?u.role===role:true).map(u=>`<option value="${u.id}">${u.nom}</option>`).join('');
+function badgeOp(type,annulee){const t=TYPES_OP[type]||{label:type,color:'gray'};return `<span class="badge badge-${t.color}${annulee?' badge-strikethrough':''}">${t.label}</span>`;}
+function getSoldePortf(userId,devise){const p=cachePortf.find(x=>x.utilisateur_id===userId&&x.devise===devise);return p?parseFloat(p.solde_actuel):null;}
+function getSoldeMob(compteId){const m=cacheMob.find(x=>x.id===compteId);return m?parseFloat(m.solde_actuel):null;}
 
-function badgeOp(type,annulee){
-  const t=TYPES_OP[type]||{label:type,color:'gray'};
-  return `<span class="badge badge-${t.color}${annulee?' badge-strikethrough':''}">${t.label}</span>`;
-}
-
-// Trouver le solde d'un portefeuille dans le cache
-function getSoldePortf(userId,devise){
-  const p=cachePortf.find(x=>x.utilisateur_id===userId&&x.devise===devise);
-  return p?parseFloat(p.solde_actuel):null;
-}
-function getSoldeMob(compteId){
-  const m=cacheMob.find(x=>x.id===compteId);
-  return m?parseFloat(m.solde_actuel):null;
-}
-
-// ============================================================
-// MISE À JOUR DES SOLDES — Logique comptable centrale
-// Chaque opération définit ses impacts sur les portefeuilles
-// impact: {type:'portf'|'mob', userId, devise|compteId, delta}
-// ============================================================
 async function appliquerImpacts(impacts){
   for(const imp of impacts){
     if(imp.type==='portf'){
-      // Récupère le solde actuel depuis Supabase (source de vérité)
-      const {data:p}=await sb.from('comptes_portefeuille')
-        .select('solde_actuel')
-        .eq('utilisateur_id',imp.userId)
-        .eq('devise',imp.devise)
-        .single();
-      if(!p){
-        // Créer si inexistant
-        await sb.from('comptes_portefeuille').insert({utilisateur_id:imp.userId,devise:imp.devise,solde_actuel:imp.delta,float_initial:0});
-      } else {
-        const nouveau=parseFloat(p.solde_actuel)+imp.delta;
-        await sb.from('comptes_portefeuille').update({solde_actuel:nouveau,mis_a_jour_le:new Date().toISOString()})
-          .eq('utilisateur_id',imp.userId).eq('devise',imp.devise);
-      }
+      const {data:p}=await sb.from('comptes_portefeuille').select('solde_actuel').eq('utilisateur_id',imp.userId).eq('devise',imp.devise).single();
+      if(!p) await sb.from('comptes_portefeuille').insert({utilisateur_id:imp.userId,devise:imp.devise,solde_actuel:imp.delta,float_initial:0});
+      else await sb.from('comptes_portefeuille').update({solde_actuel:parseFloat(p.solde_actuel)+imp.delta,mis_a_jour_le:new Date().toISOString()}).eq('utilisateur_id',imp.userId).eq('devise',imp.devise);
     } else if(imp.type==='mob'){
       const {data:m}=await sb.from('comptes_mobile_money').select('solde_actuel').eq('id',imp.compteId).single();
-      if(m){
-        const nouveau=parseFloat(m.solde_actuel)+imp.delta;
-        await sb.from('comptes_mobile_money').update({solde_actuel:nouveau}).eq('id',imp.compteId);
-      }
+      if(m) await sb.from('comptes_mobile_money').update({solde_actuel:parseFloat(m.solde_actuel)+imp.delta}).eq('id',imp.compteId);
     }
   }
 }
 
-// Calcule les impacts selon le type d'opération
 function calculerImpacts(type,params){
-  const {montant,devise,deviceCible,taux,agentId,compteId,montantConverti}=params;
+  const {montant,devise,deviceCible,taux,agentId,compteId,montantConverti,sourceType,sourceCompteId,destType,destCompteId}=params;
   switch(type){
     case 'argent_recu':
-      // Reçoit dans devise source ; si conversion, crédite devise cible
-      if(taux&&deviceCible&&deviceCible!==devise){
-        return [{type:'portf',userId:params.auteurId,devise:deviceCible,delta:montantConverti}];
-      }
+      if(taux&&deviceCible&&deviceCible!==devise) return [{type:'portf',userId:params.auteurId,devise:deviceCible,delta:montantConverti}];
       return [{type:'portf',userId:params.auteurId,devise,delta:montant}];
-
     case 'envoi_employe':
-      // Admin débite, agent crédité — qu'il s'agisse d'argent client ou rechargement float
-      return [
-        {type:'portf',userId:params.auteurId,devise,delta:-montant},
-        {type:'portf',userId:agentId,devise,delta:montant}
-      ];
-
+      return [{type:'portf',userId:params.auteurId,devise,delta:-montant},{type:'portf',userId:agentId,devise,delta:montant}];
     case 'distribution_beneficiaire':
+      if(sourceType==='mobile_money'&&sourceCompteId) return [{type:'mob',compteId:sourceCompteId,delta:-montant}];
       return [{type:'portf',userId:params.auteurId,devise,delta:-montant}];
-
     case 'mobile_money_entrant':
       return [{type:'mob',compteId,delta:montant}];
-
     case 'mobile_money_sortant':
       return [{type:'mob',compteId,delta:-montant}];
-
-    case 'commission':
-    case 'commission_mobile':
-    case 'commission_transfert':
+    case 'commission': case 'commission_mobile': case 'commission_transfert':
       return [{type:'portf',userId:params.auteurId,devise,delta:montant}];
-
     case 'retrait_float':
-      return [
-        {type:'portf',userId:agentId,devise,delta:-montant},
-        {type:'portf',userId:params.auteurId,devise,delta:montant}
-      ];
-
+      return [{type:'portf',userId:agentId,devise,delta:-montant},{type:'portf',userId:params.auteurId,devise,delta:montant}];
     case 'depense':
       return [{type:'portf',userId:params.auteurId,devise,delta:-montant}];
-
     case 'conversion':
-      return [
-        {type:'portf',userId:params.auteurId,devise,delta:-montant},
-        {type:'portf',userId:params.auteurId,devise:deviceCible,delta:montantConverti}
-      ];
-
+      return [{type:'portf',userId:params.auteurId,devise,delta:-montant},{type:'portf',userId:params.auteurId,devise:deviceCible,delta:montantConverti}];
+    case 'transfert_interne':
+      if(sourceType==='portf'&&destType==='mob') return [{type:'portf',userId:params.auteurId,devise,delta:-montant},{type:'mob',compteId:destCompteId,delta:montant}];
+      if(sourceType==='mob'&&destType==='portf') return [{type:'mob',compteId:sourceCompteId,delta:-montant},{type:'portf',userId:params.auteurId,devise,delta:montant}];
+      return [];
     default: return [];
   }
 }
+function inverserImpacts(impacts){return impacts.map(i=>({...i,delta:-i.delta}));}
 
-// Inverser les impacts (pour annulation)
-function inverserImpacts(impacts){
-  return impacts.map(i=>({...i,delta:-i.delta}));
-}
-
-// ============================================================
-// AUTH
-// ============================================================
 async function initApp(){
   document.getElementById('login-page').style.display='flex';
   const {data:users}=await sb.from('utilisateurs').select('id,nom,role').eq('actif',true).order('nom');
@@ -378,7 +326,6 @@ async function initApp(){
   const saved=sessionStorage.getItem('tp_user');
   if(saved){currentUser=JSON.parse(saved);showApp();}
 }
-
 async function doLogin(){
   const uid=document.getElementById('login-user-select').value;
   const mdp=document.getElementById('login-mdp').value;
@@ -388,197 +335,98 @@ async function doLogin(){
   if(!mdp){err.textContent='Entrez votre mot de passe.';err.style.display='block';return;}
   const {data:user}=await sb.from('utilisateurs').select('*').eq('id',uid).eq('mot_de_passe',mdp).maybeSingle();
   if(!user){err.textContent='Mot de passe incorrect.';err.style.display='block';return;}
-  currentUser=user;
-  sessionStorage.setItem('tp_user',JSON.stringify(user));
-  if(user.doit_changer_mdp){showChangeMdp();return;}
+  currentUser=user;sessionStorage.setItem('tp_user',JSON.stringify(user));
+  if(user.doit_changer_mdp){document.getElementById('login-page').style.display='none';document.getElementById('change-mdp-overlay').style.display='flex';return;}
   showApp();
 }
-
-function showChangeMdp(){
-  document.getElementById('login-page').style.display='none';
-  document.getElementById('change-mdp-overlay').style.display='flex';
-}
-
 async function submitChangeMdp(){
-  const p1=document.getElementById('new-mdp1').value;
-  const p2=document.getElementById('new-mdp2').value;
-  const err=document.getElementById('change-mdp-error');
-  err.style.display='none';
+  const p1=document.getElementById('new-mdp1').value,p2=document.getElementById('new-mdp2').value;
+  const err=document.getElementById('change-mdp-error');err.style.display='none';
   if(p1.length<6){err.textContent='Minimum 6 caractères.';err.style.display='block';return;}
-  if(p1!==p2){err.textContent='Les mots de passe ne correspondent pas.';err.style.display='block';return;}
+  if(p1!==p2){err.textContent='Ne correspondent pas.';err.style.display='block';return;}
   await sb.from('utilisateurs').update({mot_de_passe:p1,doit_changer_mdp:false}).eq('id',currentUser.id);
   currentUser.mot_de_passe=p1;currentUser.doit_changer_mdp=false;
   sessionStorage.setItem('tp_user',JSON.stringify(currentUser));
-  document.getElementById('change-mdp-overlay').style.display='none';
-  showApp();
+  document.getElementById('change-mdp-overlay').style.display='none';showApp();
 }
-
-function doLogout(){
-  sessionStorage.removeItem('tp_user');currentUser=null;
-  document.getElementById('app').style.display='none';
-  document.getElementById('login-page').style.display='flex';
-  document.getElementById('login-mdp').value='';
-}
-
+function doLogout(){sessionStorage.removeItem('tp_user');currentUser=null;document.getElementById('app').style.display='none';document.getElementById('login-page').style.display='flex';document.getElementById('login-mdp').value='';}
 async function showApp(){
-  document.getElementById('login-page').style.display='none';
-  document.getElementById('app').style.display='flex';
+  document.getElementById('login-page').style.display='none';document.getElementById('app').style.display='flex';
   document.getElementById('sidebar-username').textContent=currentUser.nom;
   document.getElementById('sidebar-role').textContent=currentUser.role==='admin'?'Administrateur':'Agent';
   document.querySelectorAll('.nav-admin-only').forEach(l=>l.style.display=currentUser.role==='admin'?'flex':'none');
-  await chargerCaches();
-  await refreshNotifBadge();
-  showPage('dashboard');
+  await chargerCaches();await refreshNotifBadge();showPage('dashboard');
 }
-
 async function chargerCaches(){
-  const [{data:p},{data:m}]=await Promise.all([
-    sb.from('comptes_portefeuille').select('*'),
-    sb.from('comptes_mobile_money').select('*').eq('actif',true)
-  ]);
-  cachePortf=p||[];
-  cacheMob=m||[];
+  const [{data:p},{data:m}]=await Promise.all([sb.from('comptes_portefeuille').select('*'),sb.from('comptes_mobile_money').select('*').eq('actif',true)]);
+  cachePortf=p||[];cacheMob=m||[];
 }
-
 async function refreshNotifBadge(){
   const {data}=await sb.from('notifications').select('id').eq('destinataire_id',currentUser.id).eq('lue',false);
-  const n=(data||[]).length;
-  const badge=document.getElementById('notif-badge');
-  badge.style.display=n>0?'inline':'none';
-  badge.textContent=n;
+  const n=(data||[]).length;const badge=document.getElementById('notif-badge');
+  badge.style.display=n>0?'inline':'none';badge.textContent=n;
 }
-
-// ============================================================
-// NAVIGATION
-// ============================================================
 function showPage(page){
   document.querySelectorAll('#main>div').forEach(d=>d.style.display='none');
   document.querySelectorAll('.sidebar-nav a').forEach(a=>a.classList.remove('active'));
   document.getElementById('page-'+page).style.display='block';
-  const nav=document.getElementById('nav-'+page);
-  if(nav)nav.classList.add('active');
-  const R={
-    dashboard:renderDashboard,
-    'nouvelle-op':renderNouvelleOp,
-    historique:renderHistorique,
-    rapports:renderRapports,
-    soldes:renderSoldes,
-    cloture:renderCloture,
-    taux:renderTaux,
-    notifications:renderNotifications,
-    admin:renderAdmin,
-    'mon-mdp':renderMonMdp
-  };
+  const nav=document.getElementById('nav-'+page);if(nav)nav.classList.add('active');
+  const R={dashboard:renderDashboard,'nouvelle-op':renderNouvelleOp,historique:renderHistorique,rapports:renderRapports,soldes:renderSoldes,cloture:renderCloture,taux:renderTaux,notifications:renderNotifications,admin:renderAdmin,'mon-mdp':renderMonMdp};
   if(R[page])R[page]();
 }
 
-// ============================================================
-// DASHBOARD
-// ============================================================
 async function renderDashboard(){
   const el=document.getElementById('page-dashboard');
-  el.innerHTML=`<div class="page-content"><div class="loading">Chargement...</div></div>`;
+  el.innerHTML='<div class="page-content"><div class="loading">Chargement...</div></div>';
   await chargerCaches();
   const today=new Date().toISOString().split('T')[0];
   const {data:ops}=await sb.from('operations').select('*').gte('cree_le',today+'T00:00:00').eq('annulee',false).order('cree_le',{ascending:false});
-
   const mesPortf=cachePortf.filter(p=>p.utilisateur_id===currentUser.id);
   const mesMob=cacheMob.filter(m=>m.utilisateur_id===currentUser.id);
   const totalRecu=(ops||[]).filter(o=>o.type_operation==='argent_recu').reduce((s,o)=>s+parseFloat(o.montant),0);
-  const totalComm=(ops||[]).filter(o=>o.type_operation==='commission').reduce((s,o)=>s+parseFloat(o.montant),0);
-
-  const soldesH=mesPortf.length
-    ?mesPortf.map(p=>`<div class="stat-card">
-        <div class="stat-label">${p.devise} · Physique</div>
-        <div class="stat-value" style="color:var(--accent)">${parseFloat(p.solde_actuel).toLocaleString('fr-FR',{minimumFractionDigits:2})}</div>
-        <div class="stat-devise">Portefeuille</div>
-      </div>`).join('')
-    :`<div class="stat-card"><div class="stat-label">Aucun portefeuille</div><div class="stat-value text-muted">—</div></div>`;
-
-  const mobH=mesMob.map(m=>`<div class="stat-card">
-      <div class="stat-label">${m.plateforme} · ${m.devise}</div>
-      <div class="stat-value" style="color:var(--purple)">${parseFloat(m.solde_actuel).toLocaleString('fr-FR',{minimumFractionDigits:2})}</div>
-      <div class="stat-devise">Mobile Money</div>
-    </div>`).join('');
-
-  const recentH=(ops||[]).slice(0,10).map(o=>`<tr>
-    <td style="font-size:11px;color:var(--text2)">${fmtD(o.cree_le)}</td>
-    <td>${badgeOp(o.type_operation,false)}</td>
-    <td class="mono">${fmtM(o.montant,o.devise_source)}${o.montant_converti?`<br><span style="font-size:10px;color:var(--text2)">→ ${fmtM(o.montant_converti,o.devise_cible)}</span>`:''}</td>
-    <td class="text-muted">${userName(o.auteur_id)}</td>
-    <td class="text-muted" style="font-size:12px">${o.notes||'—'}</td>
-  </tr>`).join('')||`<tr><td colspan="5" class="empty-state">Aucune opération aujourd'hui</td></tr>`;
-
-  el.innerHTML=`
-  <div class="page-header">
-    <div class="page-title">Tableau de bord</div>
-    <div class="page-sub">Bonjour, ${currentUser.nom} · ${new Date().toLocaleDateString('fr-FR',{weekday:'long',day:'numeric',month:'long'})}</div>
-  </div>
-  <div class="page-content">
+  const totalComm=(ops||[]).filter(o=>['commission','commission_mobile','commission_transfert'].includes(o.type_operation)).reduce((s,o)=>s+parseFloat(o.montant),0);
+  // Distributions en attente de confirmation pour cet agent
+  let pendingHtml='';
+  if(currentUser.role==='agent'){
+    const {data:pending}=await sb.from('operations').select('*').eq('auteur_id',currentUser.id).eq('type_operation','distribution_beneficiaire').eq('statut_confirmation','en_attente');
+    if(pending&&pending.length>0) pendingHtml=`<div class="alert alert-warn">${pending.length} distribution(s) en attente de couverture par un administrateur.</div>`;
+  }
+  // Envois a confirmer par cet agent
+  let confirmHtml='';
+  if(currentUser.role==='agent'){
+    const {data:notifs}=await sb.from('notifications').select('*').eq('destinataire_id',currentUser.id).eq('type','envoi_a_confirmer').eq('lue',false);
+    if(notifs&&notifs.length>0) confirmHtml=`<div class="alert alert-info" style="cursor:pointer" onclick="showPage('notifications')">${notifs.length} envoi(s) a confirmer -- cliquez ici</div>`;
+  }
+  const soldesH=mesPortf.length?mesPortf.map(p=>`<div class="stat-card"><div class="stat-label">${p.devise}</div><div class="stat-value" style="color:var(--accent)">${parseFloat(p.solde_actuel).toLocaleString('fr-FR',{minimumFractionDigits:2})}</div><div class="stat-devise">Portefeuille</div></div>`).join(''):'<div class="stat-card"><div class="stat-label">Aucun portefeuille</div><div class="stat-value text-muted">--</div></div>';
+  const mobH=mesMob.map(m=>`<div class="stat-card"><div class="stat-label">${m.plateforme}</div><div class="stat-value" style="color:var(--purple)">${parseFloat(m.solde_actuel).toLocaleString('fr-FR',{minimumFractionDigits:2})}</div><div class="stat-devise">${m.devise}</div></div>`).join('');
+  const recentH=(ops||[]).slice(0,10).map(o=>`<tr><td style="font-size:11px;color:var(--text2)">${fmtD(o.cree_le)}</td><td>${badgeOp(o.type_operation,false)}</td><td class="mono">${fmtM(o.montant,o.devise_source)}</td><td class="text-muted">${userName(o.auteur_id)}</td><td class="text-muted" style="font-size:12px">${o.notes||'--'}</td></tr>`).join('')||'<tr><td colspan="5" class="empty-state">Aucune operation aujourd\'hui</td></tr>';
+  el.innerHTML=`<div class="page-header"><div class="page-title">Tableau de bord</div><div class="page-sub">Bonjour, ${currentUser.nom}</div></div>
+  <div class="page-content">${confirmHtml}${pendingHtml}
     <div class="stats-grid">
-      <div class="stat-card"><div class="stat-label">Opérations aujourd'hui</div><div class="stat-value" style="color:var(--accent)">${(ops||[]).length}</div><div class="stat-devise">Toute l'équipe</div></div>
-      <div class="stat-card"><div class="stat-label">Total reçu</div><div class="stat-value" style="color:var(--green)">${fmtM(totalRecu,'')}</div><div class="stat-devise">Aujourd'hui</div></div>
-      <div class="stat-card"><div class="stat-label">Commissions</div><div class="stat-value" style="color:var(--amber)">${fmtM(totalComm,'')}</div><div class="stat-devise">Aujourd'hui</div></div>
+      <div class="stat-card"><div class="stat-label">Operations aujourd'hui</div><div class="stat-value" style="color:var(--accent)">${(ops||[]).length}</div></div>
+      <div class="stat-card"><div class="stat-label">Total recu</div><div class="stat-value" style="color:var(--green)">${fmtM(totalRecu,'')}</div></div>
+      <div class="stat-card"><div class="stat-label">Commissions</div><div class="stat-value" style="color:var(--amber)">${fmtM(totalComm,'')}</div></div>
     </div>
-    <div class="section-header">
-      <div class="card-title" style="margin:0">Mes soldes actuels</div>
-      <button class="btn btn-primary btn-sm" onclick="showPage('nouvelle-op')">+ Nouvelle opération</button>
-    </div>
+    <div class="section-header"><div class="card-title" style="margin:0">Mes soldes</div><button class="btn btn-primary btn-sm" onclick="showPage('nouvelle-op')">+ Nouvelle operation</button></div>
     <div class="stats-grid">${soldesH}${mobH}</div>
-    <div class="mt-6">
-      <div class="section-header"><div class="card-title" style="margin:0">Opérations du jour (toute l'équipe)</div></div>
-      <div class="table-wrap"><table><thead><tr><th>Heure</th><th>Type</th><th>Montant</th><th>Par</th><th>Notes</th></tr></thead>
-      <tbody>${recentH}</tbody></table></div>
-    </div>
+    <div class="mt-6"><div class="section-header"><div class="card-title" style="margin:0">Operations du jour</div></div>
+    <div class="table-wrap"><table><thead><tr><th>Heure</th><th>Type</th><th>Montant</th><th>Par</th><th>Notes</th></tr></thead><tbody>${recentH}</tbody></table></div></div>
   </div>`;
 }
 
-// ============================================================
-// NOUVELLE OPÉRATION
-// ============================================================
 function renderNouvelleOp(){
   const el=document.getElementById('page-nouvelle-op');
   const ops=currentUser.role==='admin'?OPS_ADMIN:OPS_AGENT;
   const mesPortf=cachePortf.filter(p=>p.utilisateur_id===currentUser.id);
   const mesMob=cacheMob.filter(m=>m.utilisateur_id===currentUser.id);
-
-  // Résumé des soldes en haut
-  const soldesResume=mesPortf.length
-    ?mesPortf.map(p=>`<span style="margin-right:16px"><span class="badge badge-gray">${p.devise}</span> <span class="mono" style="color:var(--green)">${fmtM(p.solde_actuel,'')}</span></span>`).join('')
-    :'<span class="text-muted">Aucun portefeuille configuré</span>';
-
-  const mobResume=mesMob.map(m=>`<span style="margin-right:16px"><span class="badge badge-purple">${m.plateforme}</span> <span class="mono" style="color:var(--purple)">${fmtM(m.solde_actuel,'')}</span> ${m.devise}</span>`).join('');
-
-  const cards=ops.map(key=>{
-    const t=TYPES_OP[key];
-    return `<div onclick="openModal('${key}')" style="cursor:pointer;background:var(--bg2);border:1px solid var(--border);border-radius:var(--rl);padding:16px 20px;transition:border-color .15s;display:flex;align-items:center;gap:12px"
-    onmouseover="this.style.borderColor='var(--border2)'" onmouseout="this.style.borderColor='var(--border)'">
-      <span class="badge badge-${t.color}" style="font-size:16px;padding:6px 10px;min-width:32px;justify-content:center">${t.signe}</span>
-      <div>
-        <div style="font-weight:500;font-size:13px">${t.label}</div>
-        <div style="font-size:11px;color:var(--text3);margin-top:2px">${t.desc}</div>
-      </div>
-    </div>`;
-  }).join('');
-
-  el.innerHTML=`
-  <div class="page-header">
-    <div class="page-title">Nouvelle opération</div>
-    <div class="page-sub">Rôle : ${currentUser.role==='admin'?'Administrateur':'Agent'}</div>
-  </div>
-  <div class="page-content">
-    <div class="card" style="margin-bottom:16px">
-      <div class="card-title">Vos soldes disponibles</div>
-      <div style="flex-wrap:wrap;display:flex;gap:4px">${soldesResume}</div>
-      ${mobResume?`<div style="flex-wrap:wrap;display:flex;gap:4px;margin-top:8px">${mobResume}</div>`:''}
-    </div>
-    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(270px,1fr));gap:10px">${cards}</div>
-  </div>`;
+  const soldesR=mesPortf.map(p=>`<span style="margin-right:16px"><span class="badge badge-gray">${p.devise}</span> <span class="mono" style="color:var(--green)">${fmtM(p.solde_actuel,'')}</span></span>`).join('')||'<span class="text-muted">Aucun portefeuille</span>';
+  const mobR=mesMob.map(m=>`<span style="margin-right:16px"><span class="badge badge-purple">${m.plateforme}</span> <span class="mono" style="color:var(--purple)">${fmtM(m.solde_actuel,'')}</span> ${m.devise}</span>`).join('');
+  const cards=ops.map(key=>{const t=TYPES_OP[key];return `<div onclick="openModal('${key}')" style="cursor:pointer;background:var(--bg2);border:1px solid var(--border);border-radius:var(--rl);padding:16px 20px;transition:border-color .15s;display:flex;align-items:center;gap:12px" onmouseover="this.style.borderColor='var(--border2)'" onmouseout="this.style.borderColor='var(--border)'"><span class="badge badge-${t.color}" style="font-size:16px;padding:6px 10px;min-width:32px;justify-content:center">${t.signe}</span><div><div style="font-weight:500;font-size:13px">${t.label}</div><div style="font-size:11px;color:var(--text3);margin-top:2px">${t.desc}</div></div></div>`;}).join('');
+  el.innerHTML=`<div class="page-header"><div class="page-title">Nouvelle operation</div><div class="page-sub">Role : ${currentUser.role==='admin'?'Administrateur':'Agent'}</div></div>
+  <div class="page-content"><div class="card" style="margin-bottom:16px"><div class="card-title">Vos soldes disponibles</div><div style="flex-wrap:wrap;display:flex;gap:4px">${soldesR}</div>${mobR?`<div style="flex-wrap:wrap;display:flex;gap:4px;margin-top:8px">${mobR}</div>`:''}</div>
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(270px,1fr));gap:10px">${cards}</div></div>`;
 }
 
-// ============================================================
-// MODAL
-// ============================================================
 function openModal(type){
   currentModalType=type;
   const t=TYPES_OP[type];
@@ -586,888 +434,438 @@ function openModal(type){
   document.getElementById('modal-sub').textContent=t.desc;
   document.getElementById('modal-body').innerHTML=buildForm(type);
   document.getElementById('modal-overlay').style.display='flex';
-  // Charger comptes mobiles
   setTimeout(async()=>{
     const sel=document.getElementById('f-mobile');
     if(!sel)return;
     const mobs=cacheMob.filter(m=>m.utilisateur_id===currentUser.id);
-    sel.innerHTML=mobs.length
-      ?'<option value="">-- Choisir --</option>'+mobs.map(m=>`<option value="${m.id}">${m.plateforme} · ${m.devise} — solde: ${fmtM(m.solde_actuel,'')}</option>`).join('')
-      :'<option value="">Aucun compte mobile configuré</option>';
-    // Afficher le solde du 1er compte sélectionné
-    updateSoldeMobAffiche();
+    sel.innerHTML=mobs.length?'<option value="">-- Choisir --</option>'+mobs.map(m=>`<option value="${m.id}">${m.plateforme} (${m.devise}) -- solde: ${fmtM(m.solde_actuel,'')}</option>`).join(''):'<option value="">Aucun compte mobile</option>';
+    // Aussi charger les comptes mobile pour commission
+    const selComm=document.getElementById('f-commission-compte');
+    if(selComm){
+      selComm.innerHTML=mobs.length?'<option value="">-- Choisir le compte --</option>'+mobs.map(m=>`<option value="${m.id}">${m.plateforme} (${m.devise})</option>`).join(''):'<option value="">Aucun compte</option>';
+    }
+    // Charger les distributions en attente pour envoi_employe
+    if(type==='envoi_employe') await chargerDistribEnAttente();
   },50);
 }
-
-function closeModal(){
-  document.getElementById('modal-overlay').style.display='none';
-  currentModalType=null;
-}
+function closeModal(){document.getElementById('modal-overlay').style.display='none';currentModalType=null;}
 
 function buildForm(type){
   const mesPortf=cachePortf.filter(p=>p.utilisateur_id===currentUser.id);
-
-  // Sélecteur de portefeuille source avec solde affiché
-  const portfSel=mesPortf.length
-    ?`<div class="form-group">
-        <label>Devise / Portefeuille *</label>
-        <select id="f-devise" onchange="updateSoldeAffiche()">${mesPortf.map(p=>`<option value="${p.devise}">${p.devise} — solde: ${fmtM(p.solde_actuel,'')}</option>`).join('')}</select>
-      </div>`
-    :`<div class="form-group"><label>Devise *</label><select id="f-devise">${devisesOpts()}</select></div>`;
-
+  const portfSel=mesPortf.length?`<div class="form-group"><label>Devise / Portefeuille *</label><select id="f-devise" onchange="updateSoldeAffiche()">${mesPortf.map(p=>`<option value="${p.devise}">${p.devise} -- solde: ${fmtM(p.solde_actuel,'')}</option>`).join('')}</select></div>`:`<div class="form-group"><label>Devise *</label><select id="f-devise">${devisesOpts()}</select></div>`;
   const portfSelSimple=`<div class="form-group"><label>Devise *</label><select id="f-devise">${devisesOpts()}</select></div>`;
-
-  const montantChamp=`<div class="form-group">
-    <label>Montant *</label>
-    <input type="number" id="f-montant" placeholder="0.00" step="0.01" min="0" oninput="updateSoldeAffiche()">
-  </div>`;
-
-  const soldeDispo=`<div id="solde-dispo-box" class="solde-dispo" style="display:none">
-    <span class="solde-dispo-label">Solde disponible</span>
-    <span id="solde-dispo-val" class="solde-dispo-val">—</span>
-  </div>`;
-
-  const taux=`<div class="form-grid" style="margin-top:10px">
-    <div class="form-group">
-      <label>Devise cible *</label>
-      <select id="f-devise-cible" onchange="updateImpactConversion()">${devisesOpts('BIF')}</select>
-    </div>
-    <div class="form-group">
-      <label>Taux (1 source = X cible)</label>
-      <input type="number" id="f-taux" placeholder="ex: 2900" step="0.000001" oninput="updateImpactConversion()">
-    </div>
-  </div>
-  <div id="impact-conversion" style="display:none" class="impact-box">
-    <div class="impact-title">Impact calculé</div>
-    <div id="impact-conversion-detail"></div>
-  </div>`;
-
+  const montantChamp=`<div class="form-group"><label>Montant *</label><input type="number" id="f-montant" placeholder="0.00" step="0.01" min="0" oninput="updateSoldeAffiche()"></div>`;
+  const soldeDispo=`<div id="solde-dispo-box" class="solde-dispo" style="display:none"><span class="solde-dispo-label">Solde disponible</span><span id="solde-dispo-val" class="solde-dispo-val">--</span></div>`;
+  const taux=`<div class="form-grid" style="margin-top:10px"><div class="form-group"><label>Devise cible *</label><select id="f-devise-cible" onchange="updateImpactConversion()">${devisesOpts('BIF')}</select></div><div class="form-group"><label>Taux (1 source = X cible)</label><input type="number" id="f-taux" placeholder="ex: 2900" step="0.000001" oninput="updateImpactConversion()"></div></div><div id="impact-conversion" style="display:none" class="impact-box"><div class="impact-title">Impact calcule</div><div id="impact-conversion-detail"></div></div>`;
   const notes=`<div class="form-group" style="margin-top:10px"><label>Notes</label><textarea id="f-notes" placeholder="Remarques..."></textarea></div>`;
-  const client=`<div class="form-group" style="margin-top:10px"><label>Nom du client</label><input type="text" id="f-client" placeholder="Nom de la personne qui envoie"></div>`;
-  const benef=`<div class="form-group" style="margin-top:10px"><label>Nom du bénéficiaire</label><input type="text" id="f-benef" placeholder="Nom du destinataire final"></div>`;
-
-  const agentSel=`<div class="form-group" style="margin-top:10px">
-    <label>Agent concerné *</label>
-    <select id="f-agent"><option value="">-- Choisir un agent --</option>${usersOpts('agent')}</select>
-  </div>`;
-
-  const mobileSel=`<div class="form-group" style="margin-top:10px">
-    <label>Compte Mobile Money *</label>
-    <select id="f-mobile" onchange="updateSoldeMobAffiche()"><option value="">Chargement...</option></select>
-  </div>
-  <div id="solde-mob-box" class="solde-dispo" style="display:none;margin-top:8px">
-    <span class="solde-dispo-label">Solde du compte mobile</span>
-    <span id="solde-mob-val" class="solde-dispo-val">—</span>
-  </div>`;
-
-  const commMobChamp=`<div class="form-group" style="margin-top:10px">
-    <label>Commission Mobile Money perçue (optionnel)</label>
-    <input type="number" id="f-commission" placeholder="0.00" step="0.01" min="0">
-    <span class="form-hint">Enregistrée séparément comme "Commission Mobile Money" et créditée sur votre portefeuille</span>
-  </div>`;
-
-  const commTransfertChamp=`<div class="form-group" style="margin-top:10px">
-    <label>Commission de transfert perçue (optionnel)</label>
-    <input type="number" id="f-commission" placeholder="0.00" step="0.01" min="0">
-    <span class="form-hint">Enregistrée séparément comme "Commission transfert" et créditée sur votre portefeuille</span>
-  </div>`;
-
-  const natureEnvoi=`<div class="form-group" style="margin-top:10px">
-    <label>Nature de cet envoi *</label>
-    <select id="f-nature-envoi">
-      <option value="transit">Argent client en transit (à distribuer)</option>
-      <option value="float">Rechargement de caisse (float permanent)</option>
-    </select>
-    <span class="form-hint">Cette distinction apparaît dans les rapports</span>
-  </div>`;
-
-  const depenseDesc=`<div class="form-group" style="margin-top:10px"><label>Description de la dépense</label><input type="text" id="f-client" placeholder="Loyer, carburant, fournitures..."></div>`;
+  const client=`<div class="form-group" style="margin-top:10px"><label>Nom du client</label><input type="text" id="f-client" placeholder="Nom"></div>`;
+  const benef=`<div class="form-group" style="margin-top:10px"><label>Nom du beneficiaire</label><input type="text" id="f-benef" placeholder="Nom du destinataire final"></div>`;
+  const agentSel=`<div class="form-group" style="margin-top:10px"><label>Agent * </label><select id="f-agent"><option value="">-- Choisir --</option>${usersOpts('agent')}</select></div>`;
+  const mobileSel=`<div class="form-group" style="margin-top:10px"><label>Compte Mobile Money *</label><select id="f-mobile"><option value="">Chargement...</option></select></div>`;
+  const commMob=`<div class="form-group" style="margin-top:10px"><label>Commission Mobile Money percue (optionnel)</label><input type="number" id="f-commission" placeholder="0.00" step="0.01" min="0"></div><div class="form-group" style="margin-top:6px"><label>Compte recevant la commission</label><select id="f-commission-compte"><option value="">Chargement...</option></select></div>`;
+  const commTransf=`<div class="form-group" style="margin-top:10px"><label>Commission de transfert percue (optionnel)</label><input type="number" id="f-commission" placeholder="0.00" step="0.01" min="0"></div>`;
+  const depenseDesc=`<div class="form-group" style="margin-top:10px"><label>Description de la depense</label><input type="text" id="f-client" placeholder="Loyer, carburant..."></div>`;
+  // Source: portefeuille ou mobile money
+  const sourceSel=`<div class="form-group" style="margin-top:10px"><label>Source des fonds *</label><select id="f-source-type" onchange="updateSourceUI()"><option value="portefeuille">Portefeuille physique</option><option value="mobile_money">Compte Mobile Money</option></select></div><div id="source-mobile-sel" style="display:none;margin-top:6px" class="form-group"><label>Compte source</label><select id="f-source-compte"></select></div>`;
+  // Admin assigne
+  const adminAssigne=`<div class="form-group" style="margin-top:10px"><label>Administrateur detenant les fonds *</label><select id="f-admin-assigne"><option value="">-- Choisir --</option>${usersOpts('admin')}</select><span class="form-hint">Quel administrateur a recu l'argent du client ?</span></div>`;
+  // Nature envoi
+  const natureEnvoi=`<div class="form-group" style="margin-top:10px"><label>Nature *</label><select id="f-nature-envoi"><option value="transit">Argent client en transit</option><option value="float">Rechargement de caisse (float)</option></select></div>`;
+  // Distributions en attente
+  const distribAttente=`<div id="distrib-attente-box" style="margin-top:14px"><div class="card-title">Distributions en attente (qui vous sont assignees)</div><div id="distrib-attente-list" class="loading">Chargement...</div></div>`;
+  // Transfert interne
+  const transfertDir=`<div class="form-group" style="margin-top:10px"><label>Direction du transfert *</label><select id="f-transfert-dir" onchange="updateTransfertUI()"><option value="portf_to_mob">Portefeuille vers Mobile Money</option><option value="mob_to_portf">Mobile Money vers Portefeuille</option></select></div><div class="form-group" style="margin-top:10px"><label>Compte Mobile Money *</label><select id="f-mobile"><option value="">Chargement...</option></select></div>`;
 
   const forms={
-    argent_recu:        `<div class="form-grid">${portfSelSimple}${montantChamp}</div>${taux}${client}${commTransfertChamp}${notes}`,
-    envoi_employe:      `<div class="form-grid">${portfSel}${montantChamp}</div>${soldeDispo}${agentSel}${natureEnvoi}${notes}`,
-    distribution_beneficiaire: `<div class="form-grid">${portfSel}${montantChamp}</div>${soldeDispo}${benef}${notes}`,
-    mobile_money_entrant: `<div class="form-grid">${portfSelSimple}${montantChamp}</div>${mobileSel}${commMobChamp}${notes}`,
+    argent_recu:        `<div class="form-grid">${portfSelSimple}${montantChamp}</div>${taux}${client}${commTransf}${notes}`,
+    envoi_employe:      `<div class="form-grid">${portfSel}${montantChamp}</div>${soldeDispo}${agentSel}${natureEnvoi}${distribAttente}${notes}`,
+    distribution_beneficiaire: `${sourceSel}<div class="form-grid" style="margin-top:10px">${portfSel}${montantChamp}</div>${soldeDispo}${benef}${adminAssigne}${commMob}${notes}`,
+    mobile_money_entrant: `<div class="form-grid">${portfSelSimple}${montantChamp}</div>${mobileSel}${commMob}${notes}`,
     mobile_money_sortant: `<div class="form-grid">${portfSelSimple}${montantChamp}</div>${mobileSel}${notes}`,
     commission:         `<div class="form-grid">${portfSel}${montantChamp}</div>${notes}`,
     retrait_float:      `<div class="form-grid">${portfSelSimple}${montantChamp}</div>${agentSel}${notes}`,
     depense:            `<div class="form-grid">${portfSel}${montantChamp}</div>${soldeDispo}${depenseDesc}${notes}`,
-    conversion:         `<div class="form-grid">${portfSel}${montantChamp}</div>${soldeDispo}${taux}${notes}`
+    conversion:         `<div class="form-grid">${portfSel}${montantChamp}</div>${soldeDispo}${taux}${notes}`,
+    transfert_interne:  `${transfertDir}<div class="form-grid" style="margin-top:10px">${portfSel}${montantChamp}</div>${soldeDispo}${notes}`
   };
   return forms[type]||`<div class="form-grid">${portfSel}${montantChamp}</div>${notes}`;
 }
 
-// Affiche le solde disponible en temps réel dans le modal
+function updateSourceUI(){
+  const type=document.getElementById('f-source-type')?.value;
+  const mobDiv=document.getElementById('source-mobile-sel');
+  if(!mobDiv)return;
+  if(type==='mobile_money'){
+    mobDiv.style.display='block';
+    const mobs=cacheMob.filter(m=>m.utilisateur_id===currentUser.id);
+    const sel=document.getElementById('f-source-compte');
+    sel.innerHTML=mobs.map(m=>`<option value="${m.id}">${m.plateforme} (${m.devise}) -- solde: ${fmtM(m.solde_actuel,'')}</option>`).join('');
+  } else { mobDiv.style.display='none'; }
+}
+function updateTransfertUI(){ updateSoldeAffiche(); }
 function updateSoldeAffiche(){
-  const box=document.getElementById('solde-dispo-box');
-  const val=document.getElementById('solde-dispo-val');
+  const box=document.getElementById('solde-dispo-box'),val=document.getElementById('solde-dispo-val');
   if(!box||!val)return;
   const devise=document.getElementById('f-devise')?.value;
   const montant=parseFloat(document.getElementById('f-montant')?.value)||0;
   const solde=getSoldePortf(currentUser.id,devise);
   if(solde===null){box.style.display='none';return;}
-  box.style.display='flex';
-  val.textContent=fmtM(solde,devise);
+  box.style.display='flex';val.textContent=fmtM(solde,devise);
   val.className='solde-dispo-val'+(montant>solde?' insuffisant':'');
 }
-
-function updateSoldeMobAffiche(){
-  const box=document.getElementById('solde-mob-box');
-  const val=document.getElementById('solde-mob-val');
-  if(!box||!val)return;
-  const compteId=document.getElementById('f-mobile')?.value;
-  const solde=getSoldeMob(compteId);
-  if(!compteId||solde===null){box.style.display='none';return;}
-  box.style.display='flex';
-  val.textContent=fmtM(solde,'');
-}
-
 function updateImpactConversion(){
-  const box=document.getElementById('impact-conversion');
-  const detail=document.getElementById('impact-conversion-detail');
+  const box=document.getElementById('impact-conversion'),detail=document.getElementById('impact-conversion-detail');
   if(!box||!detail)return;
   const montant=parseFloat(document.getElementById('f-montant')?.value)||0;
   const devise=document.getElementById('f-devise')?.value||'';
   const cible=document.getElementById('f-devise-cible')?.value||'';
   const taux=parseFloat(document.getElementById('f-taux')?.value)||0;
   if(!montant||!taux||!cible||devise===cible){box.style.display='none';return;}
-  const converti=montant*taux;
   box.style.display='block';
-  detail.innerHTML=`
-    <div class="impact-row"><span class="name">Débité (${devise})</span><span class="neg">-${fmtM(montant,'')}</span></div>
-    <div class="impact-row"><span class="name">Crédité (${cible})</span><span class="pos">+${fmtM(converti,'')}</span></div>`;
-  updateSoldeAffiche();
+  detail.innerHTML=`<div class="impact-row"><span class="name">Debite (${devise})</span><span class="neg">-${fmtM(montant,'')}</span></div><div class="impact-row"><span class="name">Credite (${cible})</span><span class="pos">+${fmtM(montant*taux,'')}</span></div>`;
 }
 
-// ============================================================
-// SOUMISSION OPÉRATION — avec mise à jour des soldes
-// ============================================================
+async function chargerDistribEnAttente(){
+  const box=document.getElementById('distrib-attente-list');
+  if(!box)return;
+  const {data:distribs}=await sb.from('operations').select('*').eq('type_operation','distribution_beneficiaire').eq('admin_assigne_id',currentUser.id).eq('statut_confirmation','en_attente').eq('annulee',false).order('cree_le',{ascending:false});
+  if(!distribs||distribs.length===0){box.innerHTML='<div class="text-muted" style="padding:8px;font-size:12px">Aucune distribution en attente.</div>';return;}
+  box.innerHTML=distribs.map(d=>`<label style="display:flex;align-items:center;gap:10px;padding:8px;border-bottom:1px solid var(--border);cursor:pointer"><input type="checkbox" name="distrib-select" value="${d.id}" data-montant="${d.montant}" data-devise="${d.devise_source}" checked><div><div style="font-size:13px">${d.nom_beneficiaire||'Beneficiaire'} <span class="mono text-muted">${fmtM(d.montant,d.devise_source)}</span></div><div style="font-size:11px;color:var(--text3)">Par ${userName(d.auteur_id)} -- ${fmtD(d.cree_le)}</div></div></label>`).join('');
+}
+
 async function submitOperation(){
   const type=currentModalType;
   const montant=parseFloat(document.getElementById('f-montant')?.value);
   const devise=document.getElementById('f-devise')?.value;
   const btn=document.getElementById('btn-submit-op');
-
   if(!montant||montant<=0){alert('Montant invalide');return;}
   if(!devise){alert('Devise requise');return;}
-
-  // Vérifications de solde avant débit
-  const typesDebit=['envoi_employe','distribution_beneficiaire','depense','conversion'];
-  if(typesDebit.includes(type)){
-    const solde=getSoldePortf(currentUser.id,devise);
-    if(solde!==null&&montant>solde){
-      alert(`Solde insuffisant !\nDisponible : ${fmtM(solde,devise)}\nDemandé : ${fmtM(montant,devise)}`);
-      return;
-    }
-  }
-
+  const typesDebit=['envoi_employe','depense','conversion'];
+  if(typesDebit.includes(type)){const solde=getSoldePortf(currentUser.id,devise);if(solde!==null&&montant>solde){alert('Solde insuffisant !\nDisponible : '+fmtM(solde,devise));return;}}
   const taux_change=parseFloat(document.getElementById('f-taux')?.value)||null;
   const devise_cible=document.getElementById('f-devise-cible')?.value||null;
   const montant_converti=(taux_change&&devise_cible)?montant*taux_change:null;
   const agentId=document.getElementById('f-agent')?.value||null;
   const compteId=document.getElementById('f-mobile')?.value||null;
   const comm=parseFloat(document.getElementById('f-commission')?.value)||0;
-  // Nature de l'envoi : transit (argent client) ou float (rechargement caisse)
+  const commCompteId=document.getElementById('f-commission-compte')?.value||null;
+  const sourceType=document.getElementById('f-source-type')?.value||null;
+  const sourceCompteId=document.getElementById('f-source-compte')?.value||null;
+  const adminAssigneId=document.getElementById('f-admin-assigne')?.value||null;
   const natureEnvoi=document.getElementById('f-nature-envoi')?.value||null;
-  const notesVal=document.getElementById('f-notes')?.value||null;
-
-  // Vérif compte mobile pour opérations mobiles
-  if(['mobile_money_entrant','mobile_money_sortant'].includes(type)&&!compteId){
-    alert('Sélectionnez un compte Mobile Money');return;
-  }
-  // Vérif agent pour opérations admin
-  if(['envoi_employe','retrait_float'].includes(type)&&!agentId){
-    alert('Sélectionnez un agent');return;
-  }
-
+  const transfertDir=document.getElementById('f-transfert-dir')?.value||null;
+  if(['mobile_money_entrant','mobile_money_sortant'].includes(type)&&!compteId){alert('Selectionnez un compte Mobile Money');return;}
+  if(['envoi_employe','retrait_float'].includes(type)&&!agentId){alert('Selectionnez un agent');return;}
+  if(type==='distribution_beneficiaire'&&!adminAssigneId){alert('Selectionnez l\'administrateur detenant les fonds');return;}
+  if(type==='transfert_interne'&&!compteId){alert('Selectionnez un compte Mobile Money');return;}
   btn.disabled=true;btn.textContent='Enregistrement...';
 
-  // Notes enrichies avec nature de l'envoi
-  let notesFinales=notesVal||'';
-  if(natureEnvoi==='float') notesFinales='[RECHARGEMENT FLOAT] '+(notesFinales||'');
-  else if(natureEnvoi==='transit') notesFinales='[TRANSIT CLIENT] '+(notesFinales||'');
+  let notesVal=document.getElementById('f-notes')?.value||'';
+  if(natureEnvoi==='float') notesVal='[RECHARGEMENT FLOAT] '+notesVal;
+  else if(natureEnvoi==='transit') notesVal='[TRANSIT CLIENT] '+notesVal;
 
-  // Calcul des impacts comptables
-  const params={auteurId:currentUser.id,montant,devise,deviceCible:devise_cible,taux:taux_change,agentId,compteId,montantConverti:montant_converti};
+  const params={auteurId:currentUser.id,montant,devise,deviceCible:devise_cible,taux:taux_change,agentId,compteId,montantConverti:montant_converti,sourceType,sourceCompteId,destType:null,destCompteId:null};
+  // Transfert interne
+  if(type==='transfert_interne'){
+    if(transfertDir==='portf_to_mob'){params.sourceType='portf';params.destType='mob';params.destCompteId=compteId;}
+    else{params.sourceType='mob';params.sourceCompteId=compteId;params.destType='portf';}
+  }
   const impacts=calculerImpacts(type,params);
-
-  // Enregistrer l'opération principale
   const op={
-    auteur_id:currentUser.id,type_operation:type,montant,devise_source:devise,
-    devise_cible,taux_change,montant_converti,
-    expediteur_id:currentUser.id,
-    destinataire_id:agentId||null,
-    compte_mobile_id:compteId||null,
+    auteur_id:currentUser.id,type_operation:type,montant,devise_source:devise,devise_cible,taux_change,montant_converti,
+    expediteur_id:currentUser.id,destinataire_id:agentId||null,compte_mobile_id:compteId||null,
     nom_client:document.getElementById('f-client')?.value||null,
     nom_beneficiaire:document.getElementById('f-benef')?.value||null,
-    notes:notesFinales||null,
-    annulee:false,
-    impacts_json:JSON.stringify(impacts)
+    notes:notesVal||null,annulee:false,impacts_json:JSON.stringify(impacts),
+    admin_assigne_id:adminAssigneId||null,
+    source_type:sourceType||(type==='distribution_beneficiaire'?'portefeuille':null),
+    source_compte_id:sourceCompteId||null,
+    statut_confirmation:type==='distribution_beneficiaire'?'en_attente':null,
+    commission_mobile:comm>0&&(type==='mobile_money_entrant'||type==='distribution_beneficiaire')?comm:null,
+    commission_compte_id:commCompteId||null
   };
 
-  const {error}=await sb.from('operations').insert(op);
+  const {data:inserted,error}=await sb.from('operations').insert(op).select().single();
   if(error){btn.disabled=false;btn.textContent='Enregistrer';alert('Erreur: '+error.message);return;}
 
-  // Enregistrer le taux de change si renseigné
-  if(taux_change&&devise_cible&&devise_cible!==devise){
-    await sb.from('taux_change').insert({saisi_par:currentUser.id,devise_de:devise,devise_vers:devise_cible,taux:taux_change});
-  }
-
-  // Appliquer les impacts sur les soldes
+  if(taux_change&&devise_cible&&devise_cible!==devise) await sb.from('taux_change').insert({saisi_par:currentUser.id,devise_de:devise,devise_vers:devise_cible,taux:taux_change});
   await appliquerImpacts(impacts);
 
-  // Commission Mobile Money — type distinct pour les rapports
-  if(comm>0&&type==='mobile_money_entrant'){
-    const compteInfo=cacheMob.find(m=>m.id===compteId);
-    const plateforme=compteInfo?.plateforme||'Mobile Money';
+  // Commission mobile money
+  if(comm>0&&['mobile_money_entrant','distribution_beneficiaire'].includes(type)){
+    const compteInfo=cacheMob.find(m=>m.id===(commCompteId||compteId));
     const commImpact=calculerImpacts('commission_mobile',{auteurId:currentUser.id,montant:comm,devise});
-    await sb.from('operations').insert({
-      auteur_id:currentUser.id,type_operation:'commission_mobile',montant:comm,
-      devise_source:devise,annulee:false,impacts_json:JSON.stringify(commImpact),
-      notes:`Commission ${plateforme}`
-    });
+    await sb.from('operations').insert({auteur_id:currentUser.id,type_operation:'commission_mobile',montant:comm,devise_source:devise,annulee:false,impacts_json:JSON.stringify(commImpact),notes:'Commission '+(compteInfo?.plateforme||'Mobile Money'),commission_compte_id:commCompteId||compteId||null});
     await appliquerImpacts(commImpact);
   }
-
-  // Commission sur transfert classique — type distinct pour les rapports
+  // Commission transfert classique
   if(comm>0&&type==='argent_recu'){
     const commImpact=calculerImpacts('commission_transfert',{auteurId:currentUser.id,montant:comm,devise});
-    await sb.from('operations').insert({
-      auteur_id:currentUser.id,type_operation:'commission_transfert',montant:comm,
-      devise_source:devise,annulee:false,impacts_json:JSON.stringify(commImpact),
-      nom_client:document.getElementById('f-client')?.value||null,
-      notes:`Commission transfert client`
-    });
+    await sb.from('operations').insert({auteur_id:currentUser.id,type_operation:'commission_transfert',montant:comm,devise_source:devise,annulee:false,impacts_json:JSON.stringify(commImpact),nom_client:document.getElementById('f-client')?.value||null,notes:'Commission transfert client'});
     await appliquerImpacts(commImpact);
   }
 
-  // Rafraîchir le cache
-  await chargerCaches();
+  // Envoi a un agent : lier les distributions selectionnees + notifier
+  if(type==='envoi_employe'&&natureEnvoi==='transit'&&inserted){
+    const checks=document.querySelectorAll('input[name="distrib-select"]:checked');
+    const distribIds=[...checks].map(c=>c.value);
+    if(distribIds.length>0){
+      await sb.from('envoi_distributions').insert(distribIds.map(did=>({envoi_id:inserted.id,distribution_id:did})));
+      // Notifier l'agent
+      await sb.from('notifications').insert({destinataire_id:agentId,type:'envoi_a_confirmer',titre:'Fonds envoyes par '+currentUser.nom,message:'Montant: '+fmtM(montant,devise)+' -- '+distribIds.length+' distribution(s) a confirmer',operation_id:inserted.id,lue:false});
+    }
+  }
 
+  await chargerCaches();
   btn.disabled=false;btn.textContent='Enregistrer';
-  closeModal();
-  alert('✓ Opération enregistrée et soldes mis à jour !');
-  showPage('dashboard');
+  closeModal();alert('Operation enregistree !');showPage('dashboard');
 }
 
-// ============================================================
-// HISTORIQUE + ANNULATION
-// ============================================================
+// Confirmation de reception par l'agent
+function closeConfirm(){document.getElementById('confirm-overlay').style.display='none';currentConfirmEnvoi=null;}
+
+async function openConfirmation(envoiId){
+  const {data:envoi}=await sb.from('operations').select('*').eq('id',envoiId).single();
+  if(!envoi){alert('Operation introuvable');return;}
+  const {data:liens}=await sb.from('envoi_distributions').select('distribution_id').eq('envoi_id',envoiId);
+  const distribIds=(liens||[]).map(l=>l.distribution_id);
+  let distribs=[];
+  if(distribIds.length>0){
+    const {data}=await sb.from('operations').select('*').in('id',distribIds);
+    distribs=data||[];
+  }
+  const totalDistrib=distribs.reduce((s,d)=>s+parseFloat(d.montant),0);
+  currentConfirmEnvoi={envoi,distribs,totalDistrib};
+  const mesMob=cacheMob.filter(m=>m.utilisateur_id===currentUser.id);
+  const distribList=distribs.map(d=>`<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border)"><span>${d.nom_beneficiaire||'Beneficiaire'}</span><span class="mono">${fmtM(d.montant,d.devise_source)}</span></div>`).join('');
+  const destOpts=`<option value="">-- Choisir --</option><optgroup label="Portefeuille">${DEVISES.map(d=>`<option value="portf_${d}">Portefeuille ${d}</option>`).join('')}</optgroup><optgroup label="Mobile Money">${mesMob.map(m=>`<option value="mob_${m.id}">${m.plateforme} (${m.devise})</option>`).join('')}</optgroup>`;
+
+  document.getElementById('confirm-body').innerHTML=`
+    <div class="alert alert-info">Envoi de <strong>${userName(envoi.auteur_id)}</strong> -- <span class="mono">${fmtM(envoi.montant,envoi.devise_source)}</span></div>
+    <div class="card" style="margin-bottom:14px"><div class="card-title">Distributions couvertes (${distribs.length})</div>${distribList}<div style="display:flex;justify-content:space-between;padding:8px 0;font-weight:500"><span>Total distribue</span><span class="mono">${fmtM(totalDistrib,distribs[0]?.devise_source||'')}</span></div></div>
+    <div class="form-grid">
+      <div class="form-group"><label>Montant reellement recu *</label><input type="number" id="cf-montant" placeholder="0.00" step="0.01" oninput="updateCommCalc()"></div>
+      <div class="form-group"><label>Devise du montant recu *</label><select id="cf-devise">${devisesOpts('BIF')}</select></div>
+    </div>
+    <div id="comm-calc-box" class="impact-box" style="margin-top:14px;display:none"><div class="impact-title">Commission calculee</div><div id="comm-calc-detail"></div></div>
+    <div class="form-grid" style="margin-top:14px">
+      <div class="form-group"><label>Commission validee *</label><input type="number" id="cf-commission" placeholder="0.00" step="0.01"><span class="form-hint">Ajustez si different du calcul automatique</span></div>
+      <div class="form-group"><label>Motif de l'ecart (si ajustement)</label><input type="text" id="cf-motif" placeholder="Optionnel si pas d'ecart"></div>
+    </div>
+    <div class="form-group" style="margin-top:14px"><label>Destination des fonds recus *</label><select id="cf-destination">${destOpts}</select><span class="form-hint">Ou enregistrer cet argent recu ?</span></div>`;
+  document.getElementById('confirm-overlay').style.display='flex';
+}
+
+function updateCommCalc(){
+  if(!currentConfirmEnvoi)return;
+  const montantRecu=parseFloat(document.getElementById('cf-montant')?.value)||0;
+  const box=document.getElementById('comm-calc-box'),det=document.getElementById('comm-calc-detail');
+  if(montantRecu<=0){box.style.display='none';return;}
+  const totalDistrib=currentConfirmEnvoi.totalDistrib;
+  const comm=montantRecu-totalDistrib;
+  box.style.display='block';
+  det.innerHTML=`<div class="impact-row"><span class="name">Montant recu</span><span class="pos">${fmtM(montantRecu,'')}</span></div><div class="impact-row"><span class="name">Total distribue</span><span class="neg">-${fmtM(totalDistrib,'')}</span></div><div class="impact-row" style="border-top:1px solid var(--border);padding-top:6px"><span class="name" style="font-weight:500">Commission</span><span style="font-weight:600;color:${comm>=0?'var(--green)':'var(--red)'};font-family:var(--mono)">${fmtM(comm,'')}</span></div>`;
+  document.getElementById('cf-commission').value=comm.toFixed(2);
+}
+
+async function submitConfirmation(){
+  if(!currentConfirmEnvoi)return;
+  const montantRecu=parseFloat(document.getElementById('cf-montant')?.value);
+  const deviseRecu=document.getElementById('cf-devise')?.value;
+  const commValidee=parseFloat(document.getElementById('cf-commission')?.value)||0;
+  const motifEcart=document.getElementById('cf-motif')?.value||null;
+  const destination=document.getElementById('cf-destination')?.value;
+  if(!montantRecu||montantRecu<=0){alert('Entrez le montant recu');return;}
+  if(!destination){alert('Choisissez la destination des fonds');return;}
+  const {envoi,distribs,totalDistrib}=currentConfirmEnvoi;
+  const commCalc=montantRecu-totalDistrib;
+
+  // Determiner la destination
+  let destType,destCompteId,destDevise;
+  if(destination.startsWith('portf_')){destType='portefeuille';destDevise=destination.replace('portf_','');destCompteId=null;}
+  else if(destination.startsWith('mob_')){destType='mobile_money';destCompteId=destination.replace('mob_','');const mob=cacheMob.find(m=>m.id===destCompteId);destDevise=mob?.devise||deviseRecu;}
+
+  // Crediter la destination de l'agent
+  const impacts=[];
+  if(destType==='portefeuille') impacts.push({type:'portf',userId:currentUser.id,devise:destDevise,delta:montantRecu});
+  else if(destType==='mobile_money') impacts.push({type:'mob',compteId:destCompteId,delta:montantRecu});
+  await appliquerImpacts(impacts);
+
+  // Enregistrer la commission si positive
+  if(commValidee>0){
+    const commImpact=calculerImpacts('commission_transfert',{auteurId:currentUser.id,montant:commValidee,devise:deviseRecu});
+    await sb.from('operations').insert({auteur_id:currentUser.id,type_operation:'commission_transfert',montant:commValidee,devise_source:deviseRecu,annulee:false,impacts_json:JSON.stringify(commImpact),notes:'Commission transfert - envoi de '+userName(envoi.auteur_id)});
+    await appliquerImpacts(commImpact);
+  }
+
+  // Mettre a jour l'operation d'envoi
+  await sb.from('operations').update({statut_confirmation:'confirme',montant_recu_confirmation:montantRecu,devise_confirmation:deviseRecu,commission_calculee:commCalc,commission_validee:commValidee,motif_ecart_commission:motifEcart,destination_type:destType,destination_compte_id:destCompteId}).eq('id',envoi.id);
+  // Mettre a jour les distributions comme confirmees
+  for(const d of distribs) await sb.from('operations').update({statut_confirmation:'confirme'}).eq('id',d.id);
+  // Notifier l'admin
+  await sb.from('notifications').insert({destinataire_id:envoi.auteur_id,type:'confirmation_recue',titre:'Confirmation de '+currentUser.nom,message:'Montant recu: '+fmtM(montantRecu,deviseRecu)+' -- Commission: '+fmtM(commValidee,deviseRecu),operation_id:envoi.id,lue:false});
+
+  await chargerCaches();closeConfirm();
+  alert('Reception confirmee et soldes mis a jour !');showPage('dashboard');
+}
+
 async function renderHistorique(){
   const el=document.getElementById('page-historique');
-  el.innerHTML=`<div class="page-content"><div class="loading">Chargement...</div></div>`;
+  el.innerHTML='<div class="page-content"><div class="loading">Chargement...</div></div>';
   const {data:ops}=await sb.from('operations').select('*').order('cree_le',{ascending:false}).limit(300);
   const {data:annuls}=await sb.from('annulations').select('*');
   const annulMap={};(annuls||[]).forEach(a=>annulMap[a.operation_id]=a);
   const limite=new Date();limite.setDate(limite.getDate()-3);
-
   const rows=(ops||[]).map(o=>{
-    const dest=userName(o.destinataire_id)||o.nom_client||o.nom_beneficiaire||'—';
+    const dest=userName(o.destinataire_id)||o.nom_client||o.nom_beneficiaire||'--';
     const annulInfo=annulMap[o.id];
-    const conv=o.montant_converti?`<br><span style="font-size:10px;color:var(--text2)">→ ${fmtM(o.montant_converti,o.devise_cible)}</span>`:'';
-    const motifCell=annulInfo?`<span class="text-red" style="font-size:11px">✗ ${annulInfo.motif}</span>`:'—';
+    const conv=o.montant_converti?`<br><span style="font-size:10px;color:var(--text2)">${fmtM(o.montant_converti,o.devise_cible)}</span>`:'';
+    const statusConf=o.statut_confirmation?`<span class="badge badge-${o.statut_confirmation==='confirme'?'green':'amber'}">${o.statut_confirmation}</span>`:'';
+    const motifCell=annulInfo?`<span class="text-red" style="font-size:11px">${annulInfo.motif}</span>`:'';
     const peutAnnuler=!o.annulee&&o.auteur_id===currentUser.id&&new Date(o.cree_le)>limite;
-    const btnAnnul=peutAnnuler
-      ?`<button class="btn btn-danger btn-sm" onclick="openAnnul('${o.id}','${(TYPES_OP[o.type_operation]?.label||o.type_operation).replace(/'/g,"\\'")}',${o.montant},'${o.devise_source}')">Annuler</button>`
-      :'';
-    return `<tr class="${o.annulee?'op-annulee':''}">
-      <td style="font-size:11px;color:var(--text2);white-space:nowrap">${fmtD(o.cree_le)}</td>
-      <td>${badgeOp(o.type_operation,o.annulee)}</td>
-      <td class="mono" style="white-space:nowrap">${fmtM(o.montant,o.devise_source)}${conv}</td>
-      <td style="white-space:nowrap">${userName(o.auteur_id)}</td>
-      <td class="text-muted">${dest}</td>
-      <td style="font-size:12px">${motifCell}</td>
-      <td>${btnAnnul}</td>
-    </tr>`;
-  }).join('')||`<tr><td colspan="7" class="empty-state">Aucune opération</td></tr>`;
-
-  el.innerHTML=`
-  <div class="page-header"><div class="page-title">Historique</div>
-  <div class="page-sub">300 dernières opérations · Barrées = annulées · Soldes réajustés automatiquement</div></div>
-  <div class="page-content">
-    <div class="table-wrap"><table>
-    <thead><tr><th>Date</th><th>Type</th><th>Montant</th><th>Par</th><th>Pour / Client</th><th>Motif annulation</th><th></th></tr></thead>
-    <tbody>${rows}</tbody></table></div>
-  </div>`;
+    const btnAnnul=peutAnnuler?`<button class="btn btn-danger btn-sm" onclick="openAnnul('${o.id}','${(TYPES_OP[o.type_operation]?.label||o.type_operation)}',${o.montant},'${o.devise_source}')">Annuler</button>`:'';
+    return `<tr class="${o.annulee?'op-annulee':''}"><td style="font-size:11px;color:var(--text2)">${fmtD(o.cree_le)}</td><td>${badgeOp(o.type_operation,o.annulee)}</td><td class="mono">${fmtM(o.montant,o.devise_source)}${conv}</td><td>${userName(o.auteur_id)}</td><td class="text-muted">${dest}</td><td>${statusConf}${motifCell}</td><td>${btnAnnul}</td></tr>`;
+  }).join('')||'<tr><td colspan="7" class="empty-state">Aucune operation</td></tr>';
+  el.innerHTML=`<div class="page-header"><div class="page-title">Historique</div></div><div class="page-content"><div class="table-wrap"><table><thead><tr><th>Date</th><th>Type</th><th>Montant</th><th>Par</th><th>Pour</th><th>Statut</th><th></th></tr></thead><tbody>${rows}</tbody></table></div></div>`;
 }
 
-function openAnnul(id,label,montant,devise){
-  currentAnnulOp={id,label,montant,devise};
-  document.getElementById('annul-info').innerHTML=`<strong>${label}</strong> — <span class="mono">${fmtM(montant,devise)}</span>`;
-  document.getElementById('annul-motif').value='';
-  document.getElementById('annul-overlay').style.display='flex';
-}
+function openAnnul(id,label,montant,devise){currentAnnulOp={id,label,montant,devise};document.getElementById('annul-info').innerHTML='<strong>'+label+'</strong> -- <span class="mono">'+fmtM(montant,devise)+'</span>';document.getElementById('annul-motif').value='';document.getElementById('annul-overlay').style.display='flex';}
 function closeAnnul(){document.getElementById('annul-overlay').style.display='none';currentAnnulOp=null;}
-
 async function submitAnnulation(){
   const motif=document.getElementById('annul-motif').value.trim();
-  if(motif.length<5){alert('Motif trop court (minimum 5 caractères).');return;}
-  const {id}=currentAnnulOp;
-
-  // Récupérer l'opération originale pour inverser ses impacts
-  const {data:op}=await sb.from('operations').select('*').eq('id',id).single();
-  if(!op){alert('Opération introuvable');return;}
-
-  // Marquer comme annulée
-  await sb.from('operations').update({annulee:true}).eq('id',id);
-  await sb.from('annulations').insert({operation_id:id,annule_par:currentUser.id,motif});
-
-  // Inverser les impacts comptables
-  if(op.impacts_json){
-    try{
-      const impacts=JSON.parse(op.impacts_json);
-      await appliquerImpacts(inverserImpacts(impacts));
-    }catch(e){console.warn('Impossible d\'inverser les impacts:',e);}
-  }
-
-  // Notifier les admins
+  if(motif.length<5){alert('Motif trop court (min 5 car.)');return;}
+  const {data:op}=await sb.from('operations').select('*').eq('id',currentAnnulOp.id).single();
+  if(!op){alert('Introuvable');return;}
+  await sb.from('operations').update({annulee:true}).eq('id',currentAnnulOp.id);
+  await sb.from('annulations').insert({operation_id:currentAnnulOp.id,annule_par:currentUser.id,motif});
+  if(op.impacts_json){try{await appliquerImpacts(inverserImpacts(JSON.parse(op.impacts_json)));}catch(e){}}
   const admins=allUsers.filter(u=>u.role==='admin'&&u.id!==currentUser.id);
-  if(admins.length){
-    await sb.from('notifications').insert(admins.map(a=>({
-      destinataire_id:a.id,type:'annulation',
-      titre:`Annulation par ${currentUser.nom}`,
-      message:`${currentAnnulOp.label} · ${fmtM(currentAnnulOp.montant,currentAnnulOp.devise)} · Motif: ${motif}`,
-      operation_id:id,lue:false
-    })));
-  }
-
-  await chargerCaches();
-  closeAnnul();
-  alert('✓ Opération annulée et soldes réajustés.');
-  renderHistorique();
+  if(admins.length) await sb.from('notifications').insert(admins.map(a=>({destinataire_id:a.id,type:'annulation',titre:'Annulation par '+currentUser.nom,message:currentAnnulOp.label+' -- '+fmtM(currentAnnulOp.montant,currentAnnulOp.devise)+' -- Motif: '+motif,operation_id:currentAnnulOp.id,lue:false})));
+  await chargerCaches();closeAnnul();alert('Annulee !');renderHistorique();
 }
 
-// ============================================================
-// SOLDES
-// ============================================================
+async function renderNotifications(){
+  const el=document.getElementById('page-notifications');
+  el.innerHTML='<div class="page-content"><div class="loading">Chargement...</div></div>';
+  const {data:notifs}=await sb.from('notifications').select('*').eq('destinataire_id',currentUser.id).order('cree_le',{ascending:false});
+  if(notifs&&notifs.some(n=>!n.lue)){
+    await sb.from('notifications').update({lue:true}).eq('destinataire_id',currentUser.id).eq('lue',false);
+    document.getElementById('notif-badge').style.display='none';
+  }
+  const rows=(notifs||[]).map(n=>{
+    const isConfirm=n.type==='envoi_a_confirmer'&&n.operation_id;
+    const btnConfirm=isConfirm?`<button class="btn btn-primary btn-sm" style="margin-top:8px" onclick="openConfirmation('${n.operation_id}')">Confirmer la reception</button>`:'';
+    return `<div class="card" style="margin-bottom:10px;border-left:3px solid ${n.type==='envoi_a_confirmer'?'var(--accent)':n.type==='annulation'?'var(--red)':'var(--green)'}"><div style="display:flex;justify-content:space-between;align-items:start"><div style="font-weight:500;font-size:13px">${n.titre}</div><span style="font-size:11px;color:var(--text3);white-space:nowrap;margin-left:12px">${fmtD(n.cree_le)}</span></div><div style="color:var(--text2);font-size:13px;margin-top:6px">${n.message}</div>${btnConfirm}</div>`;
+  }).join('')||'<div class="empty-state">Aucune notification</div>';
+  el.innerHTML=`<div class="page-header"><div class="page-title">Notifications</div></div><div class="page-content">${rows}</div>`;
+}
+
 async function renderSoldes(){
-  const el=document.getElementById('page-soldes');
-  el.innerHTML=`<div class="page-content"><div class="loading">Chargement...</div></div>`;
+  const el=document.getElementById('page-soldes');el.innerHTML='<div class="page-content"><div class="loading">Chargement...</div></div>';
   await chargerCaches();
   const cards=allUsers.map(u=>{
     const p=cachePortf.filter(x=>x.utilisateur_id===u.id);
     const m=cacheMob.filter(x=>x.utilisateur_id===u.id);
-    const totalUSD=p.reduce((s,x)=>x.devise==='USD'?s+parseFloat(x.solde_actuel):s,0);
-    const pRows=p.length
-      ?p.map(x=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border)">
-          <span class="badge badge-gray">${x.devise}</span>
-          <span class="mono" style="color:${parseFloat(x.solde_actuel)>0?'var(--green)':parseFloat(x.solde_actuel)<0?'var(--red)':'var(--text2)'}">${fmtM(x.solde_actuel,'')}</span>
-        </div>`).join('')
-      :`<div class="text-muted" style="font-size:12px;padding:8px 0">Aucun portefeuille</div>`;
-    const mRows=m.map(x=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border)">
-        <div><span class="badge badge-purple">${x.plateforme}</span><span class="text-muted" style="font-size:11px;margin-left:6px">${x.devise}</span></div>
-        <span class="mono" style="color:var(--purple)">${fmtM(x.solde_actuel,'')}</span>
-      </div>`).join('');
-    const c=u.role==='admin'?'var(--accent)':'var(--purple)';
-    return `<div class="card">
-      <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
-        <div style="width:36px;height:36px;border-radius:50%;background:rgba(79,142,247,.15);display:flex;align-items:center;justify-content:center;font-weight:600;font-size:14px;color:${c}">${u.nom.charAt(0)}</div>
-        <div><div style="font-weight:500">${u.nom}</div><div style="font-size:11px;color:var(--text3)">${u.role==='admin'?'Administrateur':'Agent'}</div></div>
-      </div>
-      <div style="font-size:11px;color:var(--text3);margin-bottom:6px;text-transform:uppercase;letter-spacing:.06em">Portefeuilles physiques</div>
-      ${pRows}
-      ${m.length?`<div style="font-size:11px;color:var(--text3);margin:10px 0 6px;text-transform:uppercase;letter-spacing:.06em">Mobile Money</div>${mRows}`:''}
-    </div>`;
+    const pR=p.length?p.map(x=>`<div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border)"><span class="badge badge-gray">${x.devise}</span><span class="mono" style="color:${parseFloat(x.solde_actuel)>0?'var(--green)':parseFloat(x.solde_actuel)<0?'var(--red)':'var(--text2)'}">${fmtM(x.solde_actuel,'')}</span></div>`).join(''):'<div class="text-muted" style="font-size:12px;padding:8px 0">Aucun portefeuille</div>';
+    const mR=m.map(x=>`<div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border)"><div><span class="badge badge-purple">${x.plateforme}</span><span class="text-muted" style="font-size:11px;margin-left:6px">${x.devise}</span></div><span class="mono" style="color:var(--purple)">${fmtM(x.solde_actuel,'')}</span></div>`).join('');
+    return `<div class="card"><div style="display:flex;align-items:center;gap:10px;margin-bottom:14px"><div style="width:36px;height:36px;border-radius:50%;background:rgba(79,142,247,.15);display:flex;align-items:center;justify-content:center;font-weight:600;font-size:14px;color:${u.role==='admin'?'var(--accent)':'var(--purple)'}">${u.nom.charAt(0)}</div><div><div style="font-weight:500">${u.nom}</div><div style="font-size:11px;color:var(--text3)">${u.role==='admin'?'Admin':'Agent'}</div></div></div><div style="font-size:11px;color:var(--text3);margin-bottom:6px;text-transform:uppercase;letter-spacing:.06em">Portefeuilles</div>${pR}${m.length?`<div style="font-size:11px;color:var(--text3);margin:10px 0 6px;text-transform:uppercase;letter-spacing:.06em">Mobile Money</div>${mR}`:''}</div>`;
   }).join('');
-  el.innerHTML=`<div class="page-header"><div class="page-title">Soldes de l'équipe</div><div class="page-sub">Soldes en temps réel — mis à jour à chaque opération</div></div>
-  <div class="page-content"><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:16px">${cards}</div></div>`;
+  el.innerHTML=`<div class="page-header"><div class="page-title">Soldes de l'equipe</div></div><div class="page-content"><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:16px">${cards}</div></div>`;
 }
 
-// ============================================================
-// CLÔTURE
-// ============================================================
 async function renderCloture(){
   const el=document.getElementById('page-cloture');
   const today=new Date().toISOString().split('T')[0];
   const {data:existing}=await sb.from('clotures_journalieres').select('*').eq('utilisateur_id',currentUser.id).eq('date_cloture',today).maybeSingle();
   const portf=cachePortf.filter(p=>p.utilisateur_id===currentUser.id);
   const mob=cacheMob.filter(m=>m.utilisateur_id===currentUser.id);
-
   if(existing){
-    const ecart=existing.ecart||{};
-    const eRows=Object.entries(ecart).map(([k,v])=>`
-      <div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border)">
-        <span class="text-muted">${k}</span>
-        <span class="mono ${parseFloat(v)===0?'text-muted':parseFloat(v)>0?'text-green':'text-red'}">${parseFloat(v)>=0?'+':''}${fmtM(v,'')}</span>
-      </div>`).join('');
-    el.innerHTML=`<div class="page-header"><div class="page-title">Clôture du jour</div><div class="page-sub">${new Date(today).toLocaleDateString('fr-FR',{day:'numeric',month:'long',year:'numeric'})}</div></div>
-    <div class="page-content">
-      <div class="alert alert-success">✓ Clôture déjà effectuée pour aujourd'hui.</div>
-      <div class="card"><div class="card-title">Écarts constatés</div>${eRows||'<div class="text-muted">Aucun écart — tout est correct</div>'}</div>
-      ${existing.notes?`<div class="card mt-4"><div class="card-title">Notes</div><div>${existing.notes}</div></div>`:''}
-    </div>`;
-    return;
+    const ecart=existing.ecart||{};const eR=Object.entries(ecart).map(([k,v])=>`<div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border)"><span class="text-muted">${k}</span><span class="mono ${parseFloat(v)===0?'text-muted':parseFloat(v)>0?'text-green':'text-red'}">${parseFloat(v)>=0?'+':''}${fmtM(v,'')}</span></div>`).join('');
+    el.innerHTML=`<div class="page-header"><div class="page-title">Cloture du jour</div></div><div class="page-content"><div class="alert alert-success">Cloture effectuee.</div><div class="card"><div class="card-title">Ecarts constates</div>${eR||'<div class="text-muted">Aucun ecart</div>'}</div></div>`;return;
   }
-
-  const pInputs=portf.map(p=>`<div class="form-group">
-    <label>${p.devise} — calculé: <span class="mono text-green">${fmtM(p.solde_actuel,'')}</span></label>
-    <input type="number" id="cp-${p.devise}" value="${parseFloat(p.solde_actuel).toFixed(2)}" step="0.01">
-  </div>`).join('');
-
-  const mInputs=mob.map(m=>`<div class="form-group">
-    <label>${m.plateforme} (${m.devise}) — calculé: <span class="mono" style="color:var(--purple)">${fmtM(m.solde_actuel,'')}</span></label>
-    <input type="number" id="cm-${m.id}" value="${parseFloat(m.solde_actuel).toFixed(2)}" step="0.01">
-  </div>`).join('');
-
-  el.innerHTML=`<div class="page-header"><div class="page-title">Clôture du jour</div><div class="page-sub">Comptez votre argent et entrez les montants réels</div></div>
-  <div class="page-content">
-    <div class="alert alert-info">Comptez physiquement votre argent et renseignez les montants réels. L'application calculera les écarts automatiquement.</div>
-    ${pInputs?`<div class="card"><div class="card-title">Portefeuilles physiques</div><div class="form-grid">${pInputs}</div></div>`:''}
-    ${mInputs?`<div class="card mt-4"><div class="card-title">Comptes Mobile Money</div><div class="form-grid">${mInputs}</div></div>`:''}
-    <div class="card mt-4"><div class="card-title">Notes de clôture</div><textarea id="cloture-notes" placeholder="Observations de fin de journée..."></textarea></div>
-    <div style="margin-top:16px"><button class="btn btn-primary" onclick="submitCloture()">Valider la clôture</button></div>
-  </div>`;
+  const pI=portf.map(p=>`<div class="form-group"><label>${p.devise} -- calcule: <span class="mono text-green">${fmtM(p.solde_actuel,'')}</span></label><input type="number" id="cp-${p.devise}" value="${parseFloat(p.solde_actuel).toFixed(2)}" step="0.01"></div>`).join('');
+  const mI=mob.map(m=>`<div class="form-group"><label>${m.plateforme} (${m.devise}) -- calcule: <span class="mono" style="color:var(--purple)">${fmtM(m.solde_actuel,'')}</span></label><input type="number" id="cm-${m.id}" value="${parseFloat(m.solde_actuel).toFixed(2)}" step="0.01"></div>`).join('');
+  el.innerHTML=`<div class="page-header"><div class="page-title">Cloture du jour</div></div><div class="page-content"><div class="alert alert-info">Comptez votre argent et entrez les montants reels.</div>${pI?`<div class="card"><div class="card-title">Portefeuilles</div><div class="form-grid">${pI}</div></div>`:''}${mI?`<div class="card mt-4"><div class="card-title">Mobile Money</div><div class="form-grid">${mI}</div></div>`:''}<div class="card mt-4"><div class="card-title">Notes</div><textarea id="cloture-notes" placeholder="Observations..."></textarea></div><div style="margin-top:16px"><button class="btn btn-primary" onclick="submitCloture()">Valider la cloture</button></div></div>`;
 }
-
 async function submitCloture(){
-  const today=new Date().toISOString().split('T')[0];
-  const portf=cachePortf.filter(p=>p.utilisateur_id===currentUser.id);
-  const mob=cacheMob.filter(m=>m.utilisateur_id===currentUser.id);
+  const today=new Date().toISOString().split('T')[0];const portf=cachePortf.filter(p=>p.utilisateur_id===currentUser.id);const mob=cacheMob.filter(m=>m.utilisateur_id===currentUser.id);
   const phys={},mobil={},calc={},ecart={};
-  portf.forEach(p=>{
-    const d=parseFloat(document.getElementById('cp-'+p.devise)?.value)||0;
-    phys[p.devise]=d;calc['phys_'+p.devise]=parseFloat(p.solde_actuel);
-    ecart[p.devise+' physique']=+(d-parseFloat(p.solde_actuel)).toFixed(4);
-  });
-  mob.forEach(m=>{
-    const d=parseFloat(document.getElementById('cm-'+m.id)?.value)||0;
-    mobil[m.plateforme+'_'+m.devise]=d;
-    ecart[m.plateforme+' ('+m.devise+')']=+(d-parseFloat(m.solde_actuel)).toFixed(4);
-  });
-  const {error}=await sb.from('clotures_journalieres').insert({
-    utilisateur_id:currentUser.id,date_cloture:today,
-    solde_physique_declare:phys,solde_mobile_declare:mobil,
-    solde_calcule:calc,ecart,
-    notes:document.getElementById('cloture-notes')?.value||null
-  });
-  if(error){alert('Erreur: '+error.message);return;}
-  alert('✓ Clôture enregistrée !');
-  renderCloture();
+  portf.forEach(p=>{const d=parseFloat(document.getElementById('cp-'+p.devise)?.value)||0;phys[p.devise]=d;calc['phys_'+p.devise]=parseFloat(p.solde_actuel);ecart[p.devise+' physique']=+(d-parseFloat(p.solde_actuel)).toFixed(4);});
+  mob.forEach(m=>{const d=parseFloat(document.getElementById('cm-'+m.id)?.value)||0;mobil[m.plateforme+'_'+m.devise]=d;ecart[m.plateforme+' ('+m.devise+')']=+(d-parseFloat(m.solde_actuel)).toFixed(4);});
+  const {error}=await sb.from('clotures_journalieres').insert({utilisateur_id:currentUser.id,date_cloture:today,solde_physique_declare:phys,solde_mobile_declare:mobil,solde_calcule:calc,ecart,notes:document.getElementById('cloture-notes')?.value||null});
+  if(error){alert('Erreur: '+error.message);return;}alert('Cloture enregistree !');renderCloture();
 }
 
-// ============================================================
-// TAUX DE CHANGE
-// ============================================================
 async function renderTaux(){
   const el=document.getElementById('page-taux');
   const {data:taux}=await sb.from('taux_change').select('*,utilisateurs(nom)').order('valable_le',{ascending:false}).limit(60);
-  const rows=(taux||[]).map(t=>`<tr>
-    <td style="font-size:11px;color:var(--text2)">${fmtD(t.valable_le)}</td>
-    <td><span class="badge badge-blue">${t.devise_de}</span></td>
-    <td><span class="badge badge-amber">${t.devise_vers}</span></td>
-    <td class="mono">${parseFloat(t.taux).toLocaleString('fr-FR',{minimumFractionDigits:4,maximumFractionDigits:6})}</td>
-    <td>${t.utilisateurs?.nom||'—'}</td>
-  </tr>`).join('')||`<tr><td colspan="5" class="empty-state">Aucun taux enregistré</td></tr>`;
-  el.innerHTML=`<div class="page-header"><div class="page-title">Taux de change</div><div class="page-sub">Les taux sont aussi enregistrés automatiquement lors des opérations</div></div>
-  <div class="page-content">
-    <div class="card" style="margin-bottom:20px"><div class="card-title">Enregistrer un taux manuellement</div>
-    <div class="form-grid">
-      <div class="form-group"><label>De</label><select id="t-de">${devisesOpts('USD')}</select></div>
-      <div class="form-group"><label>Vers</label><select id="t-vers">${devisesOpts('BIF')}</select></div>
-      <div class="form-group"><label>Taux (1 source = X cible)</label><input type="number" id="t-taux" placeholder="ex: 2900" step="0.000001"></div>
-    </div>
-    <button class="btn btn-primary" style="margin-top:12px" onclick="saveTaux()">Enregistrer</button></div>
-    <div class="table-wrap"><table><thead><tr><th>Date</th><th>De</th><th>Vers</th><th>Taux</th><th>Saisi par</th></tr></thead>
-    <tbody>${rows}</tbody></table></div>
-  </div>`;
+  const rows=(taux||[]).map(t=>`<tr><td style="font-size:11px;color:var(--text2)">${fmtD(t.valable_le)}</td><td><span class="badge badge-blue">${t.devise_de}</span></td><td><span class="badge badge-amber">${t.devise_vers}</span></td><td class="mono">${parseFloat(t.taux).toLocaleString('fr-FR',{minimumFractionDigits:4,maximumFractionDigits:6})}</td><td>${t.utilisateurs?.nom||'--'}</td></tr>`).join('')||'<tr><td colspan="5" class="empty-state">Aucun taux</td></tr>';
+  el.innerHTML=`<div class="page-header"><div class="page-title">Taux de change</div></div><div class="page-content"><div class="card" style="margin-bottom:20px"><div class="card-title">Enregistrer un taux</div><div class="form-grid"><div class="form-group"><label>De</label><select id="t-de">${devisesOpts('USD')}</select></div><div class="form-group"><label>Vers</label><select id="t-vers">${devisesOpts('BIF')}</select></div><div class="form-group"><label>Taux</label><input type="number" id="t-taux" placeholder="2900" step="0.000001"></div></div><button class="btn btn-primary" style="margin-top:12px" onclick="saveTaux()">Enregistrer</button></div><div class="table-wrap"><table><thead><tr><th>Date</th><th>De</th><th>Vers</th><th>Taux</th><th>Par</th></tr></thead><tbody>${rows}</tbody></table></div></div>`;
 }
+async function saveTaux(){const de=document.getElementById('t-de').value,vers=document.getElementById('t-vers').value,taux=parseFloat(document.getElementById('t-taux').value);if(!taux||taux<=0){alert('Invalide');return;}if(de===vers){alert('Identiques');return;}await sb.from('taux_change').insert({saisi_par:currentUser.id,devise_de:de,devise_vers:vers,taux});alert('Enregistre !');renderTaux();}
 
-async function saveTaux(){
-  const de=document.getElementById('t-de').value,vers=document.getElementById('t-vers').value,taux=parseFloat(document.getElementById('t-taux').value);
-  if(!taux||taux<=0){alert('Taux invalide');return;}
-  if(de===vers){alert('Devises identiques');return;}
-  const {error}=await sb.from('taux_change').insert({saisi_par:currentUser.id,devise_de:de,devise_vers:vers,taux});
-  if(error){alert('Erreur: '+error.message);return;}
-  alert('Taux enregistré !');renderTaux();
-}
-
-// ============================================================
-// NOTIFICATIONS
-// ============================================================
-async function renderNotifications(){
-  const el=document.getElementById('page-notifications');
-  el.innerHTML=`<div class="page-content"><div class="loading">Chargement...</div></div>`;
-  const {data:notifs}=await sb.from('notifications').select('*').eq('destinataire_id',currentUser.id).order('cree_le',{ascending:false});
-  if(notifs&&notifs.some(n=>!n.lue)){
-    await sb.from('notifications').update({lue:true}).eq('destinataire_id',currentUser.id).eq('lue',false);
-    document.getElementById('notif-badge').style.display='none';
-  }
-  const rows=(notifs||[]).map(n=>`<div class="card" style="margin-bottom:10px;border-left:3px solid ${n.lue?'var(--border)':'var(--red)'}">
-    <div style="display:flex;justify-content:space-between;align-items:start">
-      <div style="font-weight:500;font-size:13px">${n.titre}</div>
-      <span style="font-size:11px;color:var(--text3);white-space:nowrap;margin-left:12px">${fmtD(n.cree_le)}</span>
-    </div>
-    <div style="color:var(--text2);font-size:13px;margin-top:6px">${n.message}</div>
-  </div>`).join('')||`<div class="empty-state">Aucune notification</div>`;
-  el.innerHTML=`<div class="page-header"><div class="page-title">Notifications</div></div>
-  <div class="page-content">${rows}</div>`;
-}
-
-// ============================================================
-// MON MOT DE PASSE
-// ============================================================
 function renderMonMdp(){
   const el=document.getElementById('page-mon-mdp');
-  el.innerHTML=`<div class="page-header"><div class="page-title">Mon mot de passe</div></div>
-  <div class="page-content"><div class="card" style="max-width:400px">
-    <div id="mdp-error" class="alert alert-error" style="display:none"></div>
-    <div id="mdp-success" class="alert alert-success" style="display:none"></div>
-    <div class="form-group" style="margin-bottom:14px"><label>Mot de passe actuel</label><input type="password" id="mdp-current"></div>
-    <div class="form-group" style="margin-bottom:14px"><label>Nouveau mot de passe</label><input type="password" id="mdp-new1" placeholder="Minimum 6 caractères"></div>
-    <div class="form-group" style="margin-bottom:20px"><label>Confirmer</label><input type="password" id="mdp-new2"></div>
-    <button class="btn btn-primary" onclick="saveMonMdp()">Enregistrer</button>
-  </div></div>`;
+  el.innerHTML=`<div class="page-header"><div class="page-title">Mon mot de passe</div></div><div class="page-content"><div class="card" style="max-width:400px"><div id="mdp-error" class="alert alert-error" style="display:none"></div><div id="mdp-success" class="alert alert-success" style="display:none"></div><div class="form-group" style="margin-bottom:14px"><label>Actuel</label><input type="password" id="mdp-current"></div><div class="form-group" style="margin-bottom:14px"><label>Nouveau (min 6 car.)</label><input type="password" id="mdp-new1"></div><div class="form-group" style="margin-bottom:20px"><label>Confirmer</label><input type="password" id="mdp-new2"></div><button class="btn btn-primary" onclick="saveMonMdp()">Enregistrer</button></div></div>`;
+}
+async function saveMonMdp(){const c=document.getElementById('mdp-current').value,n1=document.getElementById('mdp-new1').value,n2=document.getElementById('mdp-new2').value;const err=document.getElementById('mdp-error'),ok=document.getElementById('mdp-success');err.style.display='none';ok.style.display='none';if(c!==currentUser.mot_de_passe){err.textContent='Incorrect.';err.style.display='block';return;}if(n1.length<6){err.textContent='Min 6 car.';err.style.display='block';return;}if(n1!==n2){err.textContent='Ne correspondent pas.';err.style.display='block';return;}await sb.from('utilisateurs').update({mot_de_passe:n1,doit_changer_mdp:false}).eq('id',currentUser.id);currentUser.mot_de_passe=n1;sessionStorage.setItem('tp_user',JSON.stringify(currentUser));ok.textContent='Mis a jour !';ok.style.display='block';}
+
+async function renderRapports(){
+  if(currentUser.role!=='admin'){document.getElementById('page-rapports').innerHTML='<div class="page-content"><div class="alert alert-error">Acces refuse.</div></div>';return;}
+  const el=document.getElementById('page-rapports');
+  const today=new Date().toISOString().split('T')[0];const moisDebut=today.substring(0,7)+'-01';
+  el.innerHTML=`<div class="page-header"><div class="page-title">Rapports</div></div><div class="page-content"><div class="card" style="margin-bottom:20px"><div class="card-title">Periode</div><div class="form-grid"><div class="form-group"><label>Debut</label><input type="date" id="rpt-debut" value="${moisDebut}"></div><div class="form-group"><label>Fin</label><input type="date" id="rpt-fin" value="${today}"></div><div class="form-group"><label>Agent</label><select id="rpt-agent"><option value="">Toute l'equipe</option>${allUsers.map(u=>`<option value="${u.id}">${u.nom}</option>`).join('')}</select></div></div><button class="btn btn-primary" style="margin-top:14px" onclick="genererRapport()">Generer</button></div><div id="rapport-resultat"></div></div>`;
+  await genererRapport();
+}
+async function genererRapport(){
+  const debut=document.getElementById('rpt-debut')?.value,fin=document.getElementById('rpt-fin')?.value,agentFilter=document.getElementById('rpt-agent')?.value;
+  const el=document.getElementById('rapport-resultat');if(!debut||!fin)return;
+  el.innerHTML='<div class="loading">Calcul...</div>';
+  let query=sb.from('operations').select('*').gte('cree_le',debut+'T00:00:00').lte('cree_le',fin+'T23:59:59').eq('annulee',false);
+  if(agentFilter) query=query.eq('auteur_id',agentFilter);
+  const {data:ops}=await query;if(!ops||!ops.length){el.innerHTML='<div class="empty-state">Aucune operation.</div>';return;}
+  const commOps=ops.filter(o=>['commission','commission_mobile','commission_transfert'].includes(o.type_operation));
+  const depOps=ops.filter(o=>o.type_operation==='depense');
+  const parType={};commOps.forEach(o=>{const k=o.type_operation;if(!parType[k])parType[k]={count:0,total:{}};parType[k].count++;parType[k].total[o.devise_source]=(parType[k].total[o.devise_source]||0)+parseFloat(o.montant);});
+  const parAgent={};commOps.forEach(o=>{const uid=o.auteur_id;if(!parAgent[uid])parAgent[uid]={nom:userName(uid),comm:{},n:0};parAgent[uid].n++;parAgent[uid].comm[o.devise_source]=(parAgent[uid].comm[o.devise_source]||0)+parseFloat(o.montant);});
+  const depParD={};depOps.forEach(o=>{depParD[o.devise_source]=(depParD[o.devise_source]||0)+parseFloat(o.montant);});
+  const totalR=Object.entries(parType).map(([t,d])=>`<tr><td>${badgeOp(t,false)}</td><td>${d.count}</td><td>${Object.entries(d.total).map(([dv,v])=>`<span class="mono text-green">${fmtM(v,dv)}</span>`).join(' ')}</td></tr>`).join('')||'<tr><td colspan="3" class="empty-state">Aucune</td></tr>';
+  const agentR=Object.values(parAgent).map(a=>`<tr><td>${a.nom}</td><td>${a.n}</td><td>${Object.entries(a.comm).map(([d,v])=>`<span class="mono text-green">${fmtM(v,d)}</span>`).join(' ')}</td></tr>`).join('');
+  const tousD=new Set([...commOps.map(o=>o.devise_source),...depOps.map(o=>o.devise_source)]);
+  const netR=[...tousD].map(d=>{const g=commOps.filter(o=>o.devise_source===d).reduce((s,o)=>s+parseFloat(o.montant),0);const p=depOps.filter(o=>o.devise_source===d).reduce((s,o)=>s+parseFloat(o.montant),0);const n=g-p;return `<tr><td class="badge badge-gray">${d}</td><td class="mono text-green">+${fmtM(g,'')}</td><td class="mono text-red">-${fmtM(p,'')}</td><td class="mono" style="font-weight:600;color:${n>=0?'var(--green)':'var(--red)'}">${n>=0?'+':''}${fmtM(n,'')}</td></tr>`;}).join('');
+  el.innerHTML=`<div class="alert alert-info">${commOps.length} commission(s) sur la periode</div><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:16px"><div class="card"><div class="card-title">Resultat net</div><div class="table-wrap" style="border:none"><table><thead><tr><th>Devise</th><th>Gains</th><th>Depenses</th><th>Net</th></tr></thead><tbody>${netR||'--'}</tbody></table></div></div><div class="card"><div class="card-title">Par source</div><div class="table-wrap" style="border:none"><table><thead><tr><th>Type</th><th>Nb</th><th>Total</th></tr></thead><tbody>${totalR}</tbody></table></div></div><div class="card"><div class="card-title">Par agent</div><div class="table-wrap" style="border:none"><table><thead><tr><th>Agent</th><th>Nb</th><th>Total</th></tr></thead><tbody>${agentR||'--'}</tbody></table></div></div></div>`;
 }
 
-async function saveMonMdp(){
-  const curr=document.getElementById('mdp-current').value;
-  const n1=document.getElementById('mdp-new1').value;
-  const n2=document.getElementById('mdp-new2').value;
-  const err=document.getElementById('mdp-error');
-  const ok=document.getElementById('mdp-success');
-  err.style.display='none';ok.style.display='none';
-  if(curr!==currentUser.mot_de_passe){err.textContent='Mot de passe actuel incorrect.';err.style.display='block';return;}
-  if(n1.length<6){err.textContent='Minimum 6 caractères.';err.style.display='block';return;}
-  if(n1!==n2){err.textContent='Les mots de passe ne correspondent pas.';err.style.display='block';return;}
-  const {error}=await sb.from('utilisateurs').update({mot_de_passe:n1,doit_changer_mdp:false}).eq('id',currentUser.id);
-  if(error){err.textContent='Erreur: '+error.message;err.style.display='block';return;}
-  currentUser.mot_de_passe=n1;
-  sessionStorage.setItem('tp_user',JSON.stringify(currentUser));
-  ok.textContent='✓ Mot de passe mis à jour !';ok.style.display='block';
-  ['mdp-current','mdp-new1','mdp-new2'].forEach(id=>document.getElementById(id).value='');
-}
-
-// ============================================================
-// ADMIN
-// ============================================================
 async function renderAdmin(){
-  if(currentUser.role!=='admin'){document.getElementById('page-admin').innerHTML='<div class="page-content"><div class="alert alert-error">Accès refusé.</div></div>';return;}
+  if(currentUser.role!=='admin'){document.getElementById('page-admin').innerHTML='<div class="page-content"><div class="alert alert-error">Acces refuse.</div></div>';return;}
   const el=document.getElementById('page-admin');
   const {data:users}=await sb.from('utilisateurs').select('*').order('nom');
-  const portf=cachePortf;const mob=cacheMob;
-
-  const portfRows=portf.map(p=>{
-    const u=allUsers.find(x=>x.id===p.utilisateur_id);
-    return `<tr><td>${u?.nom||'—'}</td><td><span class="badge badge-blue">${p.devise}</span></td>
-      <td class="mono">${fmtM(p.solde_actuel,'')}</td><td class="mono">${fmtM(p.float_initial,'')}</td>
-      <td><button class="btn btn-secondary btn-sm" onclick="ajusterSolde('${p.utilisateur_id}','${p.devise}',${p.solde_actuel})">Ajuster</button></td></tr>`;
-  }).join('')||`<tr><td colspan="5" class="empty-state">Aucun portefeuille</td></tr>`;
-
-  const mobRows=mob.map(m=>{
-    const u=allUsers.find(x=>x.id===m.utilisateur_id);
-    return `<tr><td>${u?.nom||'—'}</td><td><span class="badge badge-purple">${m.plateforme}</span></td>
-      <td>${m.numero}</td><td class="mono">${fmtM(m.solde_actuel,'')}</td>
-      <td><span class="badge badge-${m.actif?'green':'gray'}">${m.actif?'Actif':'Inactif'}</span></td></tr>`;
-  }).join('')||`<tr><td colspan="5" class="empty-state">Aucun compte</td></tr>`;
-
-  const userRows=(users||[]).map(u=>`<tr>
-    <td>${u.nom}</td>
-    <td><span class="badge badge-${u.role==='admin'?'blue':'purple'}">${u.role}</span></td>
-    <td><span class="badge badge-${u.doit_changer_mdp?'amber':'green'}">${u.doit_changer_mdp?'Doit changer':'OK'}</span></td>
-    <td><button class="btn btn-secondary btn-sm" onclick="resetMdp('${u.id}','${u.nom.replace(/'/g,"\\'")}')">Réinitialiser</button></td>
-  </tr>`).join('');
-
-  el.innerHTML=`<div class="page-header"><div class="page-title">Administration</div></div>
-  <div class="page-content">
-    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:20px">
-      <div>
-        <div class="card">
-          <div class="card-title">Ajouter un portefeuille</div>
-          <div class="form-group"><label>Utilisateur</label><select id="a-user"><option value="">--</option>${usersOpts()}</select></div>
-          <div class="form-grid" style="margin-top:10px">
-            <div class="form-group"><label>Devise</label><select id="a-devise">${devisesOpts()}</select></div>
-            <div class="form-group"><label>Solde initial</label><input type="number" id="a-float" placeholder="0.00" step="0.01"></div>
-          </div>
-          <button class="btn btn-primary btn-sm" style="margin-top:12px" onclick="addPortefeuille()">Ajouter</button>
-        </div>
-        <div class="card mt-4"><div class="card-title">Portefeuilles</div>
-        <div class="table-wrap" style="border:none"><table><thead><tr><th>Utilisateur</th><th>Devise</th><th>Solde actuel</th><th>Float init.</th><th></th></tr></thead>
-        <tbody>${portfRows}</tbody></table></div></div>
-      </div>
-      <div>
-        <div class="card">
-          <div class="card-title">Ajouter un compte Mobile Money</div>
-          <div class="form-group"><label>Utilisateur (agent)</label><select id="mm-user"><option value="">--</option>${usersOpts('agent')}</select></div>
-          <div class="form-grid" style="margin-top:10px">
-            <div class="form-group"><label>Plateforme</label><input type="text" id="mm-plat" placeholder="M-Pesa, Lumicash, Ecocash..."></div>
-            <div class="form-group"><label>Numéro</label><input type="text" id="mm-num" placeholder="+257..."></div>
-          </div>
-          <div class="form-grid" style="margin-top:10px">
-            <div class="form-group"><label>Devise</label><select id="mm-devise">${devisesOpts('BIF')}</select></div>
-            <div class="form-group"><label>Solde initial</label><input type="number" id="mm-solde" placeholder="0.00" step="0.01"></div>
-          </div>
-          <button class="btn btn-primary btn-sm" style="margin-top:12px" onclick="addMobile()">Ajouter</button>
-        </div>
-        <div class="card mt-4"><div class="card-title">Comptes Mobile Money</div>
-        <div class="table-wrap" style="border:none"><table><thead><tr><th>Utilisateur</th><th>Plateforme</th><th>Numéro</th><th>Solde</th><th>Statut</th></tr></thead>
-        <tbody>${mobRows}</tbody></table></div></div>
-      </div>
-    </div>
-    <div class="card mt-6">
-      <div class="card-title">Gestion des utilisateurs & mots de passe</div>
-      <div class="table-wrap" style="border:none"><table><thead><tr><th>Nom</th><th>Rôle</th><th>Statut mdp</th><th>Action</th></tr></thead>
-      <tbody>${userRows}</tbody></table></div>
-    </div>
-  </div>`;
+  const portfRows=cachePortf.map(p=>{const u=allUsers.find(x=>x.id===p.utilisateur_id);return `<tr><td>${u?.nom||'--'}</td><td><span class="badge badge-blue">${p.devise}</span></td><td class="mono">${fmtM(p.solde_actuel,'')}</td><td><button class="btn btn-secondary btn-sm" onclick="ajusterSolde('${p.utilisateur_id}','${p.devise}',${p.solde_actuel})">Ajuster</button></td></tr>`;}).join('')||'<tr><td colspan="4" class="empty-state">Aucun</td></tr>';
+  const mobRows=cacheMob.map(m=>{const u=allUsers.find(x=>x.id===m.utilisateur_id);return `<tr><td>${u?.nom||'--'}</td><td><span class="badge badge-purple">${m.plateforme}</span></td><td>${m.numero}</td><td class="mono">${fmtM(m.solde_actuel,'')}</td></tr>`;}).join('')||'<tr><td colspan="4" class="empty-state">Aucun</td></tr>';
+  const userRows=(users||[]).map(u=>`<tr><td>${u.nom}</td><td><span class="badge badge-${u.role==='admin'?'blue':'purple'}">${u.role}</span></td><td><span class="badge badge-${u.doit_changer_mdp?'amber':'green'}">${u.doit_changer_mdp?'A changer':'OK'}</span></td><td><button class="btn btn-secondary btn-sm" onclick="resetMdp('${u.id}','${u.nom}')">Reset mdp</button></td></tr>`).join('');
+  el.innerHTML=`<div class="page-header"><div class="page-title">Administration</div></div><div class="page-content"><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:20px"><div><div class="card"><div class="card-title">Ajouter un portefeuille</div><div class="form-group"><label>Utilisateur</label><select id="a-user"><option value="">--</option>${usersOpts()}</select></div><div class="form-grid" style="margin-top:10px"><div class="form-group"><label>Devise</label><select id="a-devise">${devisesOpts()}</select></div><div class="form-group"><label>Solde initial</label><input type="number" id="a-float" placeholder="0" step="0.01"></div></div><button class="btn btn-primary btn-sm" style="margin-top:12px" onclick="addPortefeuille()">Ajouter</button></div><div class="card mt-4"><div class="card-title">Portefeuilles</div><div class="table-wrap" style="border:none"><table><thead><tr><th>Utilisateur</th><th>Devise</th><th>Solde</th><th></th></tr></thead><tbody>${portfRows}</tbody></table></div></div></div><div><div class="card"><div class="card-title">Ajouter un compte Mobile Money</div><div class="form-group"><label>Agent</label><select id="mm-user"><option value="">--</option>${usersOpts('agent')}</select></div><div class="form-grid" style="margin-top:10px"><div class="form-group"><label>Plateforme</label><input type="text" id="mm-plat" placeholder="M-Pesa..."></div><div class="form-group"><label>Numero</label><input type="text" id="mm-num" placeholder="+257..."></div></div><div class="form-grid" style="margin-top:10px"><div class="form-group"><label>Devise</label><select id="mm-devise">${devisesOpts('BIF')}</select></div><div class="form-group"><label>Solde initial</label><input type="number" id="mm-solde" placeholder="0" step="0.01"></div></div><button class="btn btn-primary btn-sm" style="margin-top:12px" onclick="addMobile()">Ajouter</button></div><div class="card mt-4"><div class="card-title">Comptes Mobile Money</div><div class="table-wrap" style="border:none"><table><thead><tr><th>Utilisateur</th><th>Plateforme</th><th>Numero</th><th>Solde</th></tr></thead><tbody>${mobRows}</tbody></table></div></div></div></div><div class="card mt-6"><div class="card-title">Utilisateurs</div><div class="table-wrap" style="border:none"><table><thead><tr><th>Nom</th><th>Role</th><th>MDP</th><th></th></tr></thead><tbody>${userRows}</tbody></table></div></div></div>`;
 }
-
-async function ajusterSolde(userId,devise,soldeActuel){
-  const nouveau=prompt(`Ajuster le solde ${devise} de ${userName(userId)}.\nSolde actuel: ${fmtM(soldeActuel,'')}\nNouveau solde:`);
-  if(nouveau===null)return;
-  const val=parseFloat(nouveau);
-  if(isNaN(val)){alert('Valeur invalide');return;}
-  const {error}=await sb.from('comptes_portefeuille').update({solde_actuel:val,mis_a_jour_le:new Date().toISOString()}).eq('utilisateur_id',userId).eq('devise',devise);
-  if(error){alert('Erreur: '+error.message);return;}
-  await chargerCaches();
-  alert('✓ Solde ajusté');renderAdmin();
-}
-
-async function resetMdp(uid,nom){
-  const nouveau=prompt(`Nouveau mot de passe temporaire pour ${nom} :`);
-  if(!nouveau||nouveau.length<4){alert('Mot de passe trop court');return;}
-  const {error}=await sb.from('utilisateurs').update({mot_de_passe:nouveau,doit_changer_mdp:true}).eq('id',uid);
-  if(error){alert('Erreur: '+error.message);return;}
-  alert(`✓ Mot de passe de ${nom} réinitialisé. Il devra le changer à la prochaine connexion.`);
-  renderAdmin();
-}
-
+async function ajusterSolde(uid,devise,soldeActuel){const n=prompt('Nouveau solde '+devise+' (actuel: '+fmtM(soldeActuel,'')+'):');if(n===null)return;const v=parseFloat(n);if(isNaN(v)){alert('Invalide');return;}await sb.from('comptes_portefeuille').update({solde_actuel:v,mis_a_jour_le:new Date().toISOString()}).eq('utilisateur_id',uid).eq('devise',devise);await chargerCaches();alert('Ajuste');renderAdmin();}
+async function resetMdp(uid,nom){const n=prompt('Nouveau mdp temporaire pour '+nom+':');if(!n||n.length<4)return;await sb.from('utilisateurs').update({mot_de_passe:n,doit_changer_mdp:true}).eq('id',uid);alert('Reinitialise');renderAdmin();}
 async function addPortefeuille(){
   const uid=document.getElementById('a-user').value,devise=document.getElementById('a-devise').value,fl=parseFloat(document.getElementById('a-float').value)||0;
   if(!uid){alert('Choisissez un utilisateur');return;}
-  const {error}=await sb.from('comptes_portefeuille').upsert({utilisateur_id:uid,devise,solde_actuel:fl,float_initial:fl},{onConflict:'utilisateur_id,devise'});
-  if(error){alert('Erreur: '+error.message);return;}
-  await chargerCaches();
-  alert('✓ Portefeuille ajouté !');renderAdmin();
+  await sb.from('comptes_portefeuille').upsert({utilisateur_id:uid,devise,solde_actuel:fl,float_initial:fl},{onConflict:'utilisateur_id,devise'});
+  // Si agent, creer Inoti et Lumicash par defaut si pas encore fait
+  const user=allUsers.find(u=>u.id===uid);
+  if(user&&user.role==='agent'){
+    const {data:existing}=await sb.from('comptes_mobile_money').select('plateforme').eq('utilisateur_id',uid);
+    const plats=(existing||[]).map(e=>e.plateforme.toLowerCase());
+    if(!plats.includes('inoti')) await sb.from('comptes_mobile_money').insert({utilisateur_id:uid,plateforme:'Inoti',numero:'a configurer',devise:'BIF',solde_actuel:0});
+    if(!plats.includes('lumicash')) await sb.from('comptes_mobile_money').insert({utilisateur_id:uid,plateforme:'Lumicash',numero:'a configurer',devise:'BIF',solde_actuel:0});
+  }
+  await chargerCaches();alert('Ajoute !');renderAdmin();
 }
-
 async function addMobile(){
   const uid=document.getElementById('mm-user').value,plat=document.getElementById('mm-plat').value,num=document.getElementById('mm-num').value,devise=document.getElementById('mm-devise').value,solde=parseFloat(document.getElementById('mm-solde').value)||0;
-  if(!uid||!plat||!num){alert('Remplissez tous les champs obligatoires');return;}
-  const {error}=await sb.from('comptes_mobile_money').insert({utilisateur_id:uid,plateforme:plat,numero:num,devise,solde_actuel:solde});
-  if(error){alert('Erreur: '+error.message);return;}
-  await chargerCaches();
-  alert('✓ Compte ajouté !');renderAdmin();
-}
-
-// ============================================================
-// DÉMARRAGE
-// ============================================================
-// ============================================================
-// PATCH — Ajouter rapports à la navigation
-// ============================================================
-
-
-// ============================================================
-// PAGE : RAPPORTS DE BÉNÉFICES
-// ============================================================
-async function renderRapports(){
-  if(currentUser.role !== 'admin'){
-    document.getElementById('page-rapports').innerHTML='<div class="page-content"><div class="alert alert-error">Accès réservé aux administrateurs.</div></div>';
-    return;
-  }
-  const el = document.getElementById('page-rapports');
-  const today = new Date().toISOString().split('T')[0];
-  const moisDebut = today.substring(0,7) + '-01';
-
-  el.innerHTML = `
-  <div class="page-header">
-    <div class="page-title">Rapports de bénéfices</div>
-    <div class="page-sub">Commissions et gains par source, par agent, par période</div>
-  </div>
-  <div class="page-content">
-    <div class="card" style="margin-bottom:20px">
-      <div class="card-title">Sélectionner la période</div>
-      <div class="form-grid">
-        <div class="form-group"><label>Date début</label><input type="date" id="rpt-debut" value="${moisDebut}"></div>
-        <div class="form-group"><label>Date fin</label><input type="date" id="rpt-fin" value="${today}"></div>
-        <div class="form-group"><label>Agent (optionnel)</label>
-          <select id="rpt-agent">
-            <option value="">Toute l'équipe</option>
-            ${allUsers.map(u=>`<option value="${u.id}">${u.nom}</option>`).join('')}
-          </select>
-        </div>
-      </div>
-      <button class="btn btn-primary" style="margin-top:14px" onclick="genererRapport()">Générer le rapport</button>
-    </div>
-    <div id="rapport-resultat"><div class="empty-state">Sélectionnez une période et cliquez "Générer le rapport"</div></div>
-  </div>`;
-
-  // Générer automatiquement le rapport du mois
-  await genererRapport();
-}
-
-async function genererRapport(){
-  const debut = document.getElementById('rpt-debut')?.value;
-  const fin   = document.getElementById('rpt-fin')?.value;
-  const agentFilter = document.getElementById('rpt-agent')?.value;
-  const el = document.getElementById('rapport-resultat');
-  if(!debut||!fin){ el.innerHTML='<div class="alert alert-warn">Sélectionnez une période valide.</div>'; return; }
-
-  el.innerHTML = '<div class="loading">Calcul en cours...</div>';
-
-  // Types qui génèrent des revenus
-  const typesCommissions = ['commission','commission_mobile','commission_transfert'];
-  const typeDepenses = ['depense'];
-
-  let query = sb.from('operations').select('*')
-    .gte('cree_le', debut + 'T00:00:00')
-    .lte('cree_le', fin + 'T23:59:59')
-    .eq('annulee', false);
-  if(agentFilter) query = query.eq('auteur_id', agentFilter);
-
-  const {data:ops} = await query;
-  if(!ops||ops.length===0){ el.innerHTML='<div class="empty-state">Aucune opération sur cette période.</div>'; return; }
-
-  const commOps = ops.filter(o=>typesCommissions.includes(o.type_operation));
-  const depOps  = ops.filter(o=>typeDepenses.includes(o.type_operation));
-
-  // ── Totaux par type de commission ──────────────────────────
-  const parType = {};
-  commOps.forEach(o=>{
-    const k = o.type_operation;
-    if(!parType[k]) parType[k]={count:0,total:{}};
-    parType[k].count++;
-    const d = o.devise_source;
-    parType[k].total[d] = (parType[k].total[d]||0) + parseFloat(o.montant);
-  });
-
-  // ── Totaux par agent ────────────────────────────────────────
-  const parAgent = {};
-  commOps.forEach(o=>{
-    const uid = o.auteur_id;
-    if(!parAgent[uid]) parAgent[uid]={nom:userName(uid),commissions:{},nbOps:0};
-    parAgent[uid].nbOps++;
-    const d = o.devise_source;
-    parAgent[uid].commissions[d] = (parAgent[uid].commissions[d]||0) + parseFloat(o.montant);
-  });
-
-  // ── Totaux dépenses ─────────────────────────────────────────
-  const depParDevise = {};
-  depOps.forEach(o=>{
-    const d = o.devise_source;
-    depParDevise[d] = (depParDevise[d]||0) + parseFloat(o.montant);
-  });
-
-  // ── Évolution journalière ───────────────────────────────────
-  const parJour = {};
-  commOps.forEach(o=>{
-    const j = o.cree_le.substring(0,10);
-    if(!parJour[j]) parJour[j]={};
-    const d = o.devise_source;
-    parJour[j][d] = (parJour[j][d]||0) + parseFloat(o.montant);
-  });
-
-  const labelsType = {
-    commission:'Commission manuelle',
-    commission_mobile:'Commission Mobile Money',
-    commission_transfert:'Commission transfert client'
-  };
-
-  // ── Rendu HTML ──────────────────────────────────────────────
-  const totalRows = Object.entries(parType).map(([type,data])=>{
-    const montants = Object.entries(data.total).map(([d,v])=>`<span class="mono text-green">${fmtM(v,d)}</span>`).join(' + ');
-    return `<tr>
-      <td>${badgeOp(type,false)}</td>
-      <td>${data.count}</td>
-      <td>${montants}</td>
-    </tr>`;
-  }).join('') || '<tr><td colspan="3" class="empty-state">Aucune commission</td></tr>';
-
-  const agentRows = Object.values(parAgent).map(a=>{
-    const montants = Object.entries(a.commissions).map(([d,v])=>`<span class="mono text-green">${fmtM(v,d)}</span>`).join(' ');
-    return `<tr><td>${a.nom}</td><td>${a.nbOps}</td><td>${montants||'—'}</td></tr>`;
-  }).join('') || '<tr><td colspan="3" class="empty-state">Aucune donnée</td></tr>';
-
-  const depRows = Object.entries(depParDevise).map(([d,v])=>
-    `<tr><td>Dépenses</td><td>${depOps.length}</td><td><span class="mono text-red">-${fmtM(v,d)}</span></td></tr>`
-  ).join('') || '<tr><td colspan="3" class="empty-state">Aucune dépense</td></tr>';
-
-  const jourRows = Object.entries(parJour).sort().map(([j,devises])=>{
-    const montants = Object.entries(devises).map(([d,v])=>`<span class="mono">${fmtM(v,d)}</span>`).join(' ');
-    return `<tr><td>${new Date(j+'T12:00:00').toLocaleDateString('fr-FR',{weekday:'short',day:'numeric',month:'short'})}</td><td>${montants}</td></tr>`;
-  }).join('') || '<tr><td colspan="2" class="empty-state">Aucune commission</td></tr>';
-
-  // Résumé net (commissions - dépenses) par devise
-  const tousDevises = new Set([
-    ...commOps.map(o=>o.devise_source),
-    ...depOps.map(o=>o.devise_source)
-  ]);
-  const netRows = [...tousDevises].map(d=>{
-    const gains = commOps.filter(o=>o.devise_source===d).reduce((s,o)=>s+parseFloat(o.montant),0);
-    const pertes = depOps.filter(o=>o.devise_source===d).reduce((s,o)=>s+parseFloat(o.montant),0);
-    const net = gains - pertes;
-    return `<tr>
-      <td><span class="badge badge-gray">${d}</span></td>
-      <td class="mono text-green">+${fmtM(gains,'')}</td>
-      <td class="mono text-red">-${fmtM(pertes,'')}</td>
-      <td class="mono" style="font-weight:600;color:${net>=0?'var(--green)':'var(--red)'}">${net>=0?'+':''}${fmtM(net,'')}</td>
-    </tr>`;
-  }).join('') || '<tr><td colspan="4" class="empty-state">—</td></tr>';
-
-  const dateLabel = `Du ${new Date(debut+'T12:00:00').toLocaleDateString('fr-FR',{day:'numeric',month:'long',year:'numeric'})} au ${new Date(fin+'T12:00:00').toLocaleDateString('fr-FR',{day:'numeric',month:'long',year:'numeric'})}`;
-  const agentLabel = agentFilter ? ` · ${userName(agentFilter)}` : ' · Toute l\'équipe';
-
-  el.innerHTML = `
-  <div class="alert alert-info" style="margin-bottom:16px">📊 ${dateLabel}${agentLabel} · ${commOps.length} commission(s) enregistrée(s)</div>
-
-  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:16px">
-
-    <div class="card">
-      <div class="card-title">Résultat net par devise</div>
-      <div class="table-wrap" style="border:none">
-        <table><thead><tr><th>Devise</th><th>Gains</th><th>Dépenses</th><th>Net</th></tr></thead>
-        <tbody>${netRows}</tbody></table>
-      </div>
-    </div>
-
-    <div class="card">
-      <div class="card-title">Commissions par source</div>
-      <div class="table-wrap" style="border:none">
-        <table><thead><tr><th>Type</th><th>Nb</th><th>Montant</th></tr></thead>
-        <tbody>${totalRows}</tbody></table>
-      </div>
-    </div>
-
-    <div class="card">
-      <div class="card-title">Dépenses</div>
-      <div class="table-wrap" style="border:none">
-        <table><thead><tr><th>Catégorie</th><th>Nb</th><th>Montant</th></tr></thead>
-        <tbody>${depRows}</tbody></table>
-      </div>
-    </div>
-
-    <div class="card">
-      <div class="card-title">Commissions par agent</div>
-      <div class="table-wrap" style="border:none">
-        <table><thead><tr><th>Agent</th><th>Nb ops</th><th>Total</th></tr></thead>
-        <tbody>${agentRows}</tbody></table>
-      </div>
-    </div>
-
-  </div>
-
-  <div class="card mt-4">
-    <div class="card-title">Évolution journalière des commissions</div>
-    <div class="table-wrap" style="border:none">
-      <table><thead><tr><th>Jour</th><th>Commissions perçues</th></tr></thead>
-      <tbody>${jourRows}</tbody></table>
-    </div>
-  </div>
-
-  <div class="card mt-4">
-    <div class="card-title">Détail de toutes les commissions</div>
-    <div class="table-wrap" style="border:none">
-      <table><thead><tr><th>Date</th><th>Type</th><th>Montant</th><th>Par</th><th>Notes</th></tr></thead>
-      <tbody>${commOps.map(o=>`<tr>
-        <td style="font-size:11px;color:var(--text2)">${fmtD(o.cree_le)}</td>
-        <td>${badgeOp(o.type_operation,false)}</td>
-        <td class="mono text-green">+${fmtM(o.montant,o.devise_source)}</td>
-        <td>${userName(o.auteur_id)}</td>
-        <td class="text-muted" style="font-size:12px">${o.notes||o.nom_client||'—'}</td>
-      </tr>`).join('')||'<tr><td colspan="5" class="empty-state">Aucune commission</td></tr>'}</tbody>
-      </table>
-    </div>
-  </div>`;
+  if(!uid||!plat||!num){alert('Remplissez tout');return;}
+  await sb.from('comptes_mobile_money').insert({utilisateur_id:uid,plateforme:plat,numero:num,devise,solde_actuel:solde});
+  await chargerCaches();alert('Ajoute !');renderAdmin();
 }
 
 initApp();
