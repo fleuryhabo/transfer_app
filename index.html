@@ -505,10 +505,9 @@ function buildForm(type){
     </select></div>
     <div id="source-portf-bloc"><div class="form-grid" style="margin-top:10px">${portfSel}${montantChamp}</div>${soldeDispo}</div>
     <div id="source-mob-bloc" style="display:none;margin-top:10px">
-      <div class="form-group"><label>Compte source *</label><select id="f-source-compte" onchange="updateSoldeMobSource()"><option value="">-- Choisir --</option></select></div>
+      <div class="form-group"><label>Compte Mobile Money source *</label><select id="f-source-compte" onchange="updateSoldeMobSource()"><option value="">-- Choisir --</option></select></div>
       <div id="solde-mob-source" class="solde-dispo" style="display:none;margin-top:8px"><span class="solde-dispo-label">Solde disponible</span><span id="solde-mob-source-val" class="solde-dispo-val"></span></div>
-      <div class="form-group" style="margin-top:10px"><label>Montant *</label><input type="number" id="f-montant" placeholder="0.00" step="0.01" min="0" oninput="updateSoldeMobSource()"></div>
-      <input type="hidden" id="f-devise" value="">
+      <div class="form-group" style="margin-top:10px"><label>Montant à distribuer *</label><input type="number" id="f-montant-mob" placeholder="0.00" step="0.01" min="0" oninput="updateSoldeMobSource()"></div>
     </div>`;
 
   // FIX Bug 13 : transfert interne avec solde selon direction
@@ -666,24 +665,27 @@ async function submitOperation(){
   // Récupération des champs communs
   const deviseEl=document.getElementById('f-devise');
   const montantEl=document.getElementById('f-montant');
-  let montant=parseFloat(montantEl?.value);
-  let devise=deviseEl?.value;
   const sourceType=document.getElementById('f-source-type')?.value||null;
   const sourceCompteId=document.getElementById('f-source-compte')?.value||null;
   const transfertDir=document.getElementById('f-transfert-dir')?.value||null;
   const mobSrcId=document.getElementById('f-mob-src')?.value||null;
 
-  // FIX Bug 9 : pour distribution depuis mobile, récupérer devise du compte mobile
+  // Lire le bon champ montant selon la source (FIX IDs dupliqués)
+  let montant, devise;
   if(type==='distribution_beneficiaire'&&sourceType==='mobile_money'){
+    montant=parseFloat(document.getElementById('f-montant-mob')?.value);
     const mob=cacheMob.find(m=>m.id===sourceCompteId);
-    devise=mob?.devise||devise;
+    devise=mob?.devise||'';
+    if(!devise){alert('Sélectionnez d’abord le compte Mobile Money source');return;}
+  } else {
+    montant=parseFloat(montantEl?.value);
+    devise=deviseEl?.value;
   }
-  // Transfert interne mob→portf
+  // Transfert interne mob→portf : devise du compte mobile
   if(type==='transfert_interne'&&transfertDir==='mob_to_portf'){
     const mob=cacheMob.find(m=>m.id===mobSrcId);
     devise=mob?.devise||devise;
   }
-
   if(!montant||montant<=0){alert('Montant invalide');return;}
   if(!devise){alert('S\u00e9lectionnez une devise ou un compte source');return;}
 
@@ -731,9 +733,19 @@ async function submitOperation(){
     if(!adminAssigneId){alert('S\u00e9lectionnez l\'administrateur d\u00e9tenant les fonds');return;}
     if(!document.getElementById('f-benef')?.value){alert('Renseignez le nom du b\u00e9n\u00e9ficiaire');return;}
     if(sourceType==='mobile_money'&&!sourceCompteId){alert('S\u00e9lectionnez le compte Mobile Money source');return;}
+  
+    if(comm>0&&!commCompteId){alert('Vous avez renseigné une commission. Sélectionnez le compte Mobile Money qui la reçoit.');return;}
   }
   if(type==='transfert_interne'){
     if(transfertDir==='portf_to_mob'&&!compteId){alert('S\u00e9lectionnez le compte Mobile Money de destination');return;}
+    // GARDE : devise différente portf→mob
+    if(transfertDir==='portf_to_mob'&&compteId&&devise){
+      const mobDest=cacheMob.find(m=>m.id===compteId);
+      if(mobDest&&mobDest.devise!==devise){
+        const ok=confirm("Attention : transfert "+devise+" vers compte "+mobDest.plateforme+" en "+mobDest.devise+". Aucune conversion ne sera faite. Continuer ?");
+        if(!ok){btn.disabled=false;btn.textContent='Enregistrer';return;}
+      }
+    }
     if(transfertDir==='mob_to_portf'&&!mobSrcId){alert('S\u00e9lectionnez le compte Mobile Money source');return;}
   }
 
@@ -820,6 +832,13 @@ function closeConfirm(){document.getElementById('confirm-overlay').style.display
 async function openConfirmation(envoiId){
   const {data:envoi}=await sb.from('operations').select('*').eq('id',envoiId).single();
   if(!envoi){alert('Op\u00e9ration introuvable');return;}
+  // GARDE : empêcher la double confirmation
+  if(envoi.statut_confirmation==='confirme'){
+    alert('ℹ Cette réception a déjà été confirmée.');
+    await sb.from('notifications').update({lue:true}).eq('operation_id',envoiId).eq('destinataire_id',currentUser.id).eq('type','envoi_a_confirmer');
+    await refreshNotifBadge();return;
+  }
+  if(envoi.annulee){alert('⚠ Cet envoi a été annulé.');return;}
   const {data:liens}=await sb.from('envoi_distributions').select('distribution_id').eq('envoi_id',envoiId);
   const distribIds=(liens||[]).map(l=>l.distribution_id);
   let distribs=[];
@@ -945,6 +964,17 @@ async function submitAnnulation(){
   if(motif.length<5){alert('Motif trop court (min 5 caract\u00e8res)');return;}
   const {data:op}=await sb.from('operations').select('*').eq('id',currentAnnulOp.id).single();
   if(!op){alert('Introuvable');return;}
+  // GARDE : distribution avec envoi déjà lié
+  if(op.type_operation==='distribution_beneficiaire'){
+    const {data:lien}=await sb.from('envoi_distributions').select('envoi_id').eq('distribution_id',op.id).maybeSingle();
+    if(lien){
+      const {data:envoi}=await sb.from('operations').select('statut_confirmation,annulee').eq('id',lien.envoi_id).single();
+      if(envoi&&!envoi.annulee){
+        const ok=confirm("Attention : un administrateur a déjà envoyé les fonds pour cette distribution. Annuler ne récupèrera pas cet envoi automatiquement. Continuer ?");
+        if(!ok)return;
+      }
+    }
+  }
   await sb.from('operations').update({annulee:true}).eq('id',currentAnnulOp.id);
   await sb.from('annulations').insert({operation_id:currentAnnulOp.id,annule_par:currentUser.id,motif});
   if(op.impacts_json){try{await appliquerImpacts(inverserImpacts(JSON.parse(op.impacts_json)));}catch(e){console.warn(e);}}
@@ -958,8 +988,10 @@ async function renderNotifications(){
   const el=document.getElementById('page-notifications');
   el.innerHTML='<div class="page-content"><div class="loading">Chargement\u2026</div></div>';
   const {data:notifs}=await sb.from('notifications').select('*').eq('destinataire_id',currentUser.id).order('cree_le',{ascending:false});
-  if(notifs?.some(n=>!n.lue)) await sb.from('notifications').update({lue:true}).eq('destinataire_id',currentUser.id).eq('lue',false);
-  document.getElementById('notif-badge').style.display='none';
+  if(notifs?.some(n=>!n.lue)){
+    await sb.from('notifications').update({lue:true}).eq('destinataire_id',currentUser.id).eq('lue',false);
+  }
+  await refreshNotifBadge(); // Recalcule le badge correctement
   const couleurs={envoi_a_confirmer:'var(--accent)',distribution_assignee:'var(--amber)',annulation:'var(--red)',confirmation_recue:'var(--green)'};
   const rows=(notifs||[]).map(n=>{
     const btnConfirm=n.type==='envoi_a_confirmer'&&n.operation_id?`<button class="btn btn-primary btn-sm" style="margin-top:8px" onclick="openConfirmation('${n.operation_id}')">Confirmer la r\u00e9ception</button>`:'';
@@ -1147,6 +1179,8 @@ async function saveMonMdp(){
 }
 
 initApp();
+// Polling notifications toutes les 30 secondes pour tous les utilisateurs connectés
+setInterval(async()=>{if(currentUser) await refreshNotifBadge();},30000);
 </script>
 </body>
 </html>
