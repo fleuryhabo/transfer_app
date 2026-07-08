@@ -18,19 +18,64 @@
   --teal:#2dd4bf;--teal-bg:#042f2e;
   --r:8px;--rl:12px;
   --mono:'IBM Plex Mono',monospace;--sans:'IBM Plex Sans',sans-serif;
+  --bottom-nav-h:64px;
 }
 *{box-sizing:border-box;margin:0;padding:0;}
 body{font-family:var(--sans);background:var(--bg);color:var(--text);min-height:100vh;font-size:14px;line-height:1.6;}
 #app{display:flex;min-height:100vh;}
 #sidebar{width:220px;background:var(--bg2);border-right:1px solid var(--border);display:flex;flex-direction:column;position:fixed;top:0;bottom:0;left:0;overflow-y:auto;z-index:10;}
 #main{margin-left:220px;flex:1;min-height:100vh;}
+/* ===== DESKTOP uniquement ===== */
+@media(min-width:769px){
+  #sidebar{display:flex;}
+  #bottom-nav{display:none;}
+  #drawer-overlay{display:none!important;}
+  .fab{display:none;}
+}
+/* ===== MOBILE ===== */
 @media(max-width:768px){
-  #sidebar{width:100%;position:relative;flex-direction:row;flex-wrap:wrap;overflow:visible;border-right:none;border-bottom:1px solid var(--border);}
-  #main{margin-left:0;}
-  .sidebar-nav{display:flex;flex-wrap:wrap;flex-direction:row;padding:4px 8px;gap:2px;}
-  .sidebar-nav a{padding:6px 10px;font-size:12px;}
-  .sidebar-logo{padding:12px 16px;border-bottom:none;}
-  .sidebar-user{display:none;}
+  /* Cacher sidebar desktop */
+  #sidebar{display:none!important;}
+  /* Main prend tout l'écran avec espace pour la barre du bas */
+  #main{margin-left:0;padding-bottom:var(--bottom-nav-h);}
+  /* Page header compact */
+  .page-header{padding:16px 16px 0;}
+  .page-title{font-size:17px;}
+  .page-content{padding:14px 16px 24px;}
+  /* Inputs plus grands pour les doigts */
+  .form-group input,.form-group select,.form-group textarea{
+    padding:12px 14px;font-size:15px;min-height:48px;
+  }
+  .form-group label{font-size:13px;}
+  /* Formulaires 1 colonne */
+  .form-grid{grid-template-columns:1fr!important;}
+  /* Boutons plus larges */
+  .btn{padding:12px 20px;font-size:14px;}
+  .btn-sm{padding:10px 14px;font-size:13px;}
+  /* Stats 2 colonnes fixes */
+  .stats-grid{grid-template-columns:1fr 1fr!important;gap:10px;}
+  .stat-value{font-size:18px;}
+  /* Cards opération pleine largeur */
+  #ops-grid{grid-template-columns:1fr!important;}
+  /* Tables cachées sur mobile → cartes rendues par JS */
+  .table-wrap table{display:none;}
+  .table-wrap{border:none;border-radius:0;}
+  /* Modal = bottom sheet */
+  .modal-overlay{align-items:flex-end;padding:0;}
+  .modal{border-radius:var(--rl) var(--rl) 0 0;max-height:92vh;padding:20px 20px 32px;}
+  .modal-title{font-size:17px;}
+  /* Login plein écran */
+  .login-box{border-radius:0;min-height:100vh;display:flex;flex-direction:column;justify-content:center;padding:32px 24px;max-width:100%;}
+  /* Alertes */
+  .alert{font-size:13px;padding:12px 14px;}
+  /* Sections header */
+  .section-header{gap:8px;}
+  /* Card title */
+  .card-title{font-size:11px;}
+  /* Solde dispo */
+  .solde-dispo{font-size:14px;padding:12px 14px;}
+  /* Impact box */
+  .impact-box{font-size:13px;}
 }
 .sidebar-logo{padding:20px 16px 16px;border-bottom:1px solid var(--border);}
 .logo-text{font-family:var(--mono);font-size:13px;font-weight:500;color:var(--accent);letter-spacing:.05em;}
@@ -121,6 +166,102 @@ tr:hover td{background:rgba(79,142,247,.03);}
 .impact-row .neg{color:var(--red);font-family:var(--mono);}
 .impact-row .pos{color:var(--green);font-family:var(--mono);}
 .impact-row .name{color:var(--text2);}
+
+/* ===== BOTTOM NAVIGATION (mobile) ===== */
+#bottom-nav{
+  position:fixed;bottom:0;left:0;right:0;height:var(--bottom-nav-h);
+  background:var(--bg2);border-top:1px solid var(--border);
+  display:flex;align-items:stretch;z-index:50;
+  padding-bottom:env(safe-area-inset-bottom);
+}
+.bnav-item{
+  flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;
+  gap:3px;cursor:pointer;color:var(--text3);transition:color .15s;
+  border:none;background:transparent;padding:4px 2px;
+  -webkit-tap-highlight-color:transparent;
+  position:relative;
+}
+.bnav-item:active{background:rgba(255,255,255,.04);}
+.bnav-item.active{color:var(--accent);}
+.bnav-icon{font-size:20px;line-height:1;}
+.bnav-label{font-size:10px;font-weight:500;letter-spacing:.02em;}
+.bnav-badge{
+  position:absolute;top:6px;right:calc(50% - 18px);
+  background:var(--red);color:#fff;border-radius:10px;
+  font-size:9px;font-weight:700;padding:1px 5px;min-width:16px;text-align:center;
+}
+
+/* ===== DRAWER (menu complet mobile) ===== */
+#drawer-overlay{
+  position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:60;
+  opacity:0;pointer-events:none;transition:opacity .2s;
+}
+#drawer-overlay.open{opacity:1;pointer-events:all;}
+#drawer{
+  position:fixed;bottom:0;left:0;right:0;
+  background:var(--bg2);border-radius:var(--rl) var(--rl) 0 0;
+  z-index:61;padding:12px 0 32px;
+  transform:translateY(100%);transition:transform .25s cubic-bezier(.32,0,.67,0);
+  max-height:80vh;overflow-y:auto;
+}
+#drawer-overlay.open #drawer{transform:translateY(0);}
+.drawer-handle{width:40px;height:4px;background:var(--border2);border-radius:2px;margin:0 auto 16px;}
+.drawer-user{padding:12px 20px 16px;border-bottom:1px solid var(--border);margin-bottom:8px;}
+.drawer-user-name{font-weight:600;font-size:15px;}
+.drawer-user-role{font-size:12px;color:var(--text3);margin-top:2px;}
+.drawer-item{
+  display:flex;align-items:center;gap:14px;padding:14px 20px;
+  color:var(--text2);cursor:pointer;transition:background .1s;
+  -webkit-tap-highlight-color:transparent;font-size:15px;
+}
+.drawer-item:active{background:var(--bg3);}
+.drawer-item.active{color:var(--accent);}
+.drawer-item-icon{font-size:18px;width:24px;text-align:center;}
+.drawer-sep{height:1px;background:var(--border);margin:8px 0;}
+.drawer-logout{color:var(--red)!important;}
+
+/* ===== FAB (bouton nouvelle opération flottant) ===== */
+.fab{
+  position:fixed;bottom:calc(var(--bottom-nav-h) + 16px);right:18px;
+  width:52px;height:52px;border-radius:50%;
+  background:var(--accent);color:#fff;border:none;
+  font-size:26px;font-weight:300;line-height:1;
+  display:flex;align-items:center;justify-content:center;
+  cursor:pointer;z-index:40;
+  box-shadow:0 4px 16px rgba(79,142,247,.4);
+  -webkit-tap-highlight-color:transparent;
+  transition:transform .15s,box-shadow .15s;
+}
+.fab:active{transform:scale(.94);box-shadow:0 2px 8px rgba(79,142,247,.3);}
+
+/* ===== MOBILE CARDS (remplace les tableaux) ===== */
+.mobile-card-list{display:flex;flex-direction:column;gap:10px;}
+.mobile-op-card{
+  background:var(--bg2);border:1px solid var(--border);border-radius:var(--rl);
+  padding:14px 16px;
+}
+.mobile-op-card.annulee{opacity:.45;}
+.mobile-op-row{display:flex;justify-content:space-between;align-items:flex-start;gap:8px;}
+.mobile-op-montant{font-family:var(--mono);font-size:16px;font-weight:500;color:var(--text);}
+.mobile-op-meta{font-size:11px;color:var(--text3);margin-top:4px;}
+.mobile-op-detail{font-size:12px;color:var(--text2);margin-top:6px;}
+.mobile-op-actions{margin-top:10px;display:flex;gap:8px;}
+.mobile-solde-card{
+  background:var(--bg2);border:1px solid var(--border);border-radius:var(--rl);
+  padding:16px;
+}
+.mobile-solde-name{font-weight:600;font-size:14px;margin-bottom:10px;}
+.mobile-solde-row{
+  display:flex;justify-content:space-between;align-items:center;
+  padding:8px 0;border-bottom:1px solid var(--border);
+}
+.mobile-solde-row:last-child{border-bottom:none;}
+
+/* ===== MAX-WIDTH DESKTOP ===== */
+@media(min-width:1200px){
+  .page-content{max-width:1100px;}
+  .page-header{max-width:1100px;}
+}
 </style>
 </head>
 <body>
@@ -345,6 +486,10 @@ async function showApp(){
   document.getElementById('sidebar-username').textContent=currentUser.nom;
   document.getElementById('sidebar-role').textContent=currentUser.role==='admin'?'Administrateur':'Agent';
   document.querySelectorAll('.nav-admin-only').forEach(l=>l.style.display=currentUser.role==='admin'?'flex':'none');
+  // Synchroniser le drawer mobile
+  const du=document.getElementById('drawer-username');if(du)du.textContent=currentUser.nom;
+  const dr=document.getElementById('drawer-role');if(dr)dr.textContent=currentUser.role==='admin'?'Administrateur':'Agent';
+  document.querySelectorAll('.drawer-item.nav-admin-only').forEach(l=>l.style.display=currentUser.role==='admin'?'flex':'none');
   await chargerCaches();await refreshNotifBadge();showPage('dashboard');
 }
 async function chargerCaches(){const [{data:p},{data:m}]=await Promise.all([sb.from('comptes_portefeuille').select('*'),sb.from('comptes_mobile_money').select('*').eq('actif',true)]);cachePortf=p||[];cacheMob=m||[];}
@@ -1179,8 +1324,168 @@ async function saveMonMdp(){
 }
 
 initApp();
-// Polling notifications toutes les 30 secondes pour tous les utilisateurs connectés
 setInterval(async()=>{if(currentUser) await refreshNotifBadge();},30000);
+
+// === DÉTECTION MOBILE ===
+const isMobile=()=>window.innerWidth<=768;
+
+// === MISE À JOUR BADGE BOTTOM NAV ===
+function updateBottomNavBadge(n){
+  const b=document.getElementById('bnav-notif-badge');
+  if(!b)return;
+  b.style.display=n>0?'block':'none';
+  b.textContent=n>0?n:'';
+}
+const _origRefreshBadge=refreshNotifBadge;
+refreshNotifBadge=async function(){
+  await _origRefreshBadge();
+  const b=document.getElementById('notif-badge');
+  if(b) updateBottomNavBadge(parseInt(b.textContent)||0);
+};
+
+// === DRAWER MOBILE ===
+function openDrawer(){
+  document.getElementById('drawer-overlay').classList.add('open');
+}
+function closeDrawer(){
+  document.getElementById('drawer-overlay').classList.remove('open');
+}
+function drawerNav(page){
+  closeDrawer();
+  showPage(page);
+}
+
+// === BOTTOM NAV — mise à jour de l'onglet actif ===
+const _origShowPage=showPage;
+showPage=function(page){
+  _origShowPage(page);
+  if(!isMobile())return;
+  const map={dashboard:'bnav-dash','nouvelle-op':'bnav-newop',historique:'bnav-hist',notifications:'bnav-notif'};
+  document.querySelectorAll('.bnav-item').forEach(el=>el.classList.remove('active'));
+  const activeId=map[page];
+  if(activeId) document.getElementById(activeId)?.classList.add('active');
+};
+
+// === RENDU MOBILE — HISTORIQUE EN CARTES ===
+const _origRenderHistorique=renderHistorique;
+renderHistorique=async function(){
+  await _origRenderHistorique();
+  if(!isMobile()) return;
+  const el=document.getElementById('page-historique');
+  const tables=el.querySelectorAll('.table-wrap');
+  tables.forEach(tw=>{
+    const rows=[...tw.querySelectorAll('tbody tr')];
+    if(!rows.length) return;
+    const cards=document.createElement('div');
+    cards.className='mobile-card-list';
+    cards.style.marginTop='12px';
+    rows.forEach(row=>{
+      const cells=[...row.querySelectorAll('td')];
+      if(!cells.length||row.classList.contains('empty-state')) return;
+      const card=document.createElement('div');
+      card.className='mobile-op-card'+(row.classList.contains('op-annulee')?' annulee':'');
+      const badgeEl=cells[1]?.innerHTML||'';
+      const montant=cells[2]?.textContent?.trim()||'';
+      const par=cells[3]?.textContent?.trim()||'';
+      const pour=cells[4]?.textContent?.trim()||'';
+      const statut=cells[5]?.innerHTML||'';
+      const actions=cells[6]?.innerHTML||'';
+      card.innerHTML=`
+        <div class="mobile-op-row">
+          <div>${badgeEl}</div>
+          <div class="mobile-op-montant">${montant}</div>
+        </div>
+        <div class="mobile-op-meta">${cells[0]?.textContent||''} &bull; ${par}</div>
+        ${pour&&pour!=='—'?`<div class="mobile-op-detail">Pour : ${pour}</div>`:''}
+        ${statut&&statut!=='—'?`<div style="margin-top:6px">${statut}</div>`:''}
+        ${actions?`<div class="mobile-op-actions">${actions}</div>`:''}`;
+      cards.appendChild(card);
+    });
+    tw.appendChild(cards);
+  });
+};
+
+// === RENDU MOBILE — SOLDES EN CARTES ===
+const _origRenderSoldes=renderSoldes;
+renderSoldes=async function(){
+  await _origRenderSoldes();
+  if(!isMobile()) return;
+  // Sur mobile les cards sont déjà adaptées, juste ajuster le grid
+  const el=document.getElementById('page-soldes');
+  const grid=el.querySelector('[style*="grid-template-columns"]');
+  if(grid) grid.style.gridTemplateColumns='1fr';
+};
+
+// === RENDU MOBILE — NOUVELLE OP : liste plein écran ===
+const _origRenderNouvelleOp=renderNouvelleOp;
+renderNouvelleOp=function(){
+  _origRenderNouvelleOp();
+  if(!isMobile()) return;
+  const opsGrid=document.querySelector('#page-nouvelle-op [style*="grid-template-columns"]');
+  if(opsGrid){
+    opsGrid.style.gridTemplateColumns='1fr';
+    opsGrid.id='ops-grid';
+  }
+};
 </script>
+
+<!-- BOTTOM NAVIGATION (mobile) -->
+<nav id="bottom-nav">
+  <button class="bnav-item active" id="bnav-dash" onclick="showPage('dashboard')">
+    <span class="bnav-icon">&#9672;</span>
+    <span class="bnav-label">Accueil</span>
+  </button>
+  <button class="bnav-item" id="bnav-newop" onclick="showPage('nouvelle-op')">
+    <span class="bnav-icon">&#43;</span>
+    <span class="bnav-label">Op&eacute;ration</span>
+  </button>
+  <button class="bnav-item" id="bnav-hist" onclick="showPage('historique')">
+    <span class="bnav-icon">&#8801;</span>
+    <span class="bnav-label">Historique</span>
+  </button>
+  <button class="bnav-item" id="bnav-notif" onclick="showPage('notifications')">
+    <span class="bnav-icon">&#128276;</span>
+    <span class="bnav-label">Alertes</span>
+    <span class="bnav-badge" id="bnav-notif-badge" style="display:none">0</span>
+  </button>
+  <button class="bnav-item" id="bnav-more" onclick="openDrawer()">
+    <span class="bnav-icon">&#8943;</span>
+    <span class="bnav-label">Plus</span>
+  </button>
+</nav>
+
+<!-- DRAWER COMPLET (mobile) -->
+<div id="drawer-overlay" onclick="if(event.target===this)closeDrawer()">
+  <div id="drawer">
+    <div class="drawer-handle"></div>
+    <div class="drawer-user">
+      <div class="drawer-user-name" id="drawer-username">—</div>
+      <div class="drawer-user-role" id="drawer-role">—</div>
+    </div>
+    <div class="drawer-item" onclick="drawerNav('soldes')">
+      <span class="drawer-item-icon">&#9678;</span> Soldes &eacute;quipe
+    </div>
+    <div class="drawer-item" onclick="drawerNav('taux')">
+      <span class="drawer-item-icon">&#8644;</span> Taux de change
+    </div>
+    <div class="drawer-item" onclick="drawerNav('cloture')">
+      <span class="drawer-item-icon">&#10003;</span> Cl&ocirc;ture du jour
+    </div>
+    <div class="drawer-item" onclick="drawerNav('mon-mdp')">
+      <span class="drawer-item-icon">&#128273;</span> Mon mot de passe
+    </div>
+    <div class="drawer-item nav-admin-only" onclick="drawerNav('rapports')">
+      <span class="drawer-item-icon">R</span> Rapports
+    </div>
+    <div class="drawer-item nav-admin-only" onclick="drawerNav('admin')">
+      <span class="drawer-item-icon">&#9881;</span> Administration
+    </div>
+    <div class="drawer-sep"></div>
+    <div class="drawer-item drawer-logout" onclick="doLogout();closeDrawer()">
+      <span class="drawer-item-icon">&#8594;</span> D&eacute;connexion
+    </div>
+  </div>
+</div>
+
 </body>
 </html>
