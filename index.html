@@ -23,7 +23,7 @@
 *{box-sizing:border-box;margin:0;padding:0;}
 body{font-family:var(--sans);background:var(--bg);color:var(--text);min-height:100vh;font-size:14px;line-height:1.6;}
 #app{display:flex;min-height:100vh;}
-#sidebar{width:220px;background:var(--bg2);border-right:1px solid var(--border);display:flex;flex-direction:column;position:fixed;top:0;bottom:0;left:0;overflow-y:auto;z-index:10;}
+#sidebar{width:220px;background:var(--bg2);border-right:1px solid var(--border);display:flex;flex-direction:column;position:fixed;top:0;bottom:0;left:0;z-index:10;overflow:hidden;}
 #main{margin-left:220px;flex:1;min-height:100vh;}
 /* ===== DESKTOP uniquement ===== */
 @media(min-width:769px){
@@ -430,7 +430,8 @@ function calculerImpacts(type,p){
   const {montant,devise,deviceCible,montantConverti,agentId,compteId,sourceType,sourceCompteId,destType,destCompteId,commCompteId}=p;
   switch(type){
     case 'argent_recu':
-      if(p.taux&&deviceCible&&deviceCible!==devise) return [{type:'portf',userId:p.auteurId,devise:deviceCible,delta:montantConverti}];
+      // Si destination explicite : impacts gérés dans submitOperation (pas de double crédit)
+      if(p.hasDestination) return [];
       return [{type:'portf',userId:p.auteurId,devise,delta:montant}];
     case 'envoi_employe':
       // FIX Bug 2: admin d\u00e9bit\u00e9 seulement. L'agent est cr\u00e9dit\u00e9 \u00e0 la confirmation.
@@ -1076,43 +1077,80 @@ async function submitOperation(){
 
   btn.disabled=true;btn.textContent='Enregistrement\u2026';
 
-  // Construction des paramètres d'impact
-  // Résoudre source et destination pour dépense et TBA
-  let depSrcCompteId=null,depSrcDevise=devise;
+  // ── RÉSOLUTION PROPRE (sans clés dupliquées) ──────────────
+
+  // 1. DÉPENSE : identifier le compte source
+  let finalSrcType = sourceType==='mobile_money'?'mobile_money':sourceType;
+  let finalSrcCompteId = sourceType==='mobile_money'?sourceCompteId:null;
   if(type==='depense'&&depenseSrc){
-    if(depenseSrc.startsWith('mob_')){depSrcCompteId=depenseSrc.replace('mob_','');const mob=cacheMob.find(m=>m.id===depSrcCompteId);depSrcDevise=mob?.devise||devise;}
-    else if(depenseSrc.startsWith('portf_')){depSrcDevise=depenseSrc.replace('portf_','');}
-    devise=depSrcDevise;
+    if(depenseSrc.startsWith('mob_')){
+      finalSrcType='mob'; finalSrcCompteId=depenseSrc.replace('mob_','');
+      const mob=cacheMob.find(m=>m.id===finalSrcCompteId);
+      devise=mob?.devise||devise;
+    } else {
+      finalSrcType='portf'; finalSrcCompteId=null;
+      devise=depenseSrc.replace('portf_','');
+    }
   }
-  let tbaSrcType=null,tbaSrcCompteId=null,tbaSrcDevise=devise;
-  let tbaDestType=null,tbaDestCompteId=null;
+
+  // 2. TRANSFERT ENTRE AGENTS
+  let finalDestType=null, finalDestCompteId=null, finalAgentId=agentId;
   if(type==='transfert_entre_agents'&&tbaSrc){
-    if(tbaSrc.startsWith('portf_')){tbaSrcType='portf';tbaSrcDevise=tbaSrc.replace('portf_','');devise=tbaSrcDevise;}
-    else if(tbaSrc.startsWith('mob_')){tbaSrcType='mob';tbaSrcCompteId=tbaSrc.replace('mob_','');const mob=cacheMob.find(m=>m.id===tbaSrcCompteId);tbaSrcDevise=mob?.devise||devise;devise=tbaSrcDevise;}
-    if(tbaDestCompte?.startsWith('portf_')){tbaDestType='portf';}
-    else if(tbaDestCompte?.startsWith('mob_')){tbaDestType='mob';tbaDestCompteId=tbaDestCompte.replace('mob_','');}
+    if(tbaSrc.startsWith('portf_')){finalSrcType='portf';finalSrcCompteId=null;devise=tbaSrc.replace('portf_','');}
+    else if(tbaSrc.startsWith('mob_')){
+      finalSrcType='mob'; finalSrcCompteId=tbaSrc.replace('mob_','');
+      const mob=cacheMob.find(m=>m.id===finalSrcCompteId);
+      devise=mob?.devise||devise;
+    }
+    if(tbaDestCompte?.startsWith('portf_')){finalDestType='portf';}
+    else if(tbaDestCompte?.startsWith('mob_')){finalDestType='mob';finalDestCompteId=tbaDestCompte.replace('mob_','');}
+    finalAgentId=tbaDestAgent;
   }
-  const params={
-    auteurId:currentUser.id,montant,devise,deviceCible:devise_cible,taux:taux_change,
-    agentId:type==='transfert_entre_agents'?tbaDestAgent:agentId,
-    compteId:type==='transfert_interne'&&transfertDir==='portf_to_mob'?compteId:(type==='transfert_interne'&&transfertDir==='mob_to_portf'?null:compteId),
-    montantConverti:montant_converti,sourceType,sourceCompteId:sourceType==='mobile_money'?sourceCompteId:null,
-    destType:null,destCompteId:null,commCompteId,
-    isFloat:natureEnvoi==='float',
-    // Dépense
-    sourceType:type==='depense'?(depenseSrc?.startsWith('mob_')?'mob':'portf'):sourceType,
-    sourceCompteId:type==='depense'?depSrcCompteId:(sourceType==='mobile_money'?sourceCompteId:null),
-    // Transfert entre agents
-    sourceType:type==='transfert_entre_agents'?tbaSrcType:sourceType,
-    sourceCompteId:type==='transfert_entre_agents'?tbaSrcCompteId:(type==='depense'?depSrcCompteId:(sourceType==='mobile_money'?sourceCompteId:null)),
-    destType:type==='transfert_entre_agents'?tbaDestType:null,
-    destCompteId:type==='transfert_entre_agents'?tbaDestCompteId:null,
-  };
+
+  // 3. TRANSFERT INTERNE
+  let tiSrcType=null, tiSrcCompteId=null, tiDestType=null, tiDestCompteId=null;
   if(type==='transfert_interne'){
-    if(transfertDir==='portf_to_mob'){params.sourceType='portf';params.destType='mob';params.destCompteId=compteId;}
-    else{params.sourceType='mob';params.sourceCompteId=mobSrcId;params.destType='portf';}
+    if(transfertDir==='portf_to_mob'){tiSrcType='portf';tiDestType='mob';tiDestCompteId=compteId;}
+    else{tiSrcType='mob';tiSrcCompteId=mobSrcId;tiDestType='portf';}
   }
-  const impacts=calculerImpacts(type,params);
+
+  // 4. ARGENT_RECU : résoudre la destination choisie
+  let destRecepType=null, destRecepCompte=null, destRecepDevise=devise;
+  if(destRecep){
+    if(destRecep.startsWith('portf_')){
+      destRecepType='portf'; destRecepDevise=destRecep.replace('portf_','');
+    } else if(destRecep.startsWith('mob_')){
+      destRecepType='mob'; destRecepCompte=destRecep.replace('mob_','');
+      const mob=cacheMob.find(m=>m.id===destRecepCompte);
+      destRecepDevise=mob?.devise||devise;
+    }
+  }
+
+  // Params propres (une seule valeur par clé)
+  const params={
+    auteurId:currentUser.id, montant, devise,
+    deviceCible:devise_cible, taux:taux_change, montantConverti:montant_converti,
+    agentId:finalAgentId,
+    compteId:type==='transfert_interne'?null:compteId,
+    sourceType: type==='transfert_interne'?tiSrcType:finalSrcType,
+    sourceCompteId: type==='transfert_interne'?tiSrcCompteId:finalSrcCompteId,
+    destType: type==='transfert_interne'?tiDestType:finalDestType,
+    destCompteId: type==='transfert_interne'?tiDestCompteId:finalDestCompteId,
+    commCompteId, isFloat:natureEnvoi==='float',
+    hasDestination: !!(type==='argent_recu'&&destRecepType)
+  };
+
+  // FIX DOUBLE CRÉDIT : pour argent_recu avec destination,
+  // les impacts RÉELS sont ceux de la destination (pas le portf source)
+  // Cela garantit aussi que impacts_json est correct pour l'annulation
+  let impacts;
+  if(type==='argent_recu'&&destRecepType){
+    impacts=[];
+    if(destRecepType==='portf') impacts.push({type:'portf',userId:currentUser.id,devise:destRecepDevise,delta:montant});
+    else if(destRecepType==='mob'&&destRecepCompte) impacts.push({type:'mob',compteId:destRecepCompte,delta:montant});
+  } else {
+    impacts=calculerImpacts(type,params);
+  }
 
   // Notes enrichies
   let notes=notesVal;
@@ -1133,27 +1171,12 @@ async function submitOperation(){
     commission_compte_id:commCompteId||null
   };
 
-  // Gérer destination fonds reçus (argent_recu)
-  let destRecepType=null,destRecepCompte=null,destRecepDevise=devise;
-  if(destRecep){
-    if(destRecep.startsWith('portf_')){destRecepType='portefeuille';destRecepDevise=destRecep.replace('portf_','');}
-    else if(destRecep.startsWith('mob_')){destRecepType='mobile_money';destRecepCompte=destRecep.replace('mob_','');const mob=cacheMob.find(m=>m.id===destRecepCompte);destRecepDevise=mob?.devise||devise;}
-  }
-
   const {data:inserted,error}=await sb.from('operations').insert(op).select().single();
   if(error){btn.disabled=false;btn.textContent='Enregistrer';alert('Erreur\u00a0: '+error.message);return;}
 
   if(taux_change&&devise_cible&&devise_cible!==devise)
     await sb.from('taux_change').insert({saisi_par:currentUser.id,devise_de:devise,devise_vers:devise_cible,taux:taux_change});
   await appliquerImpacts(impacts);
-
-  // Argent reçu : créditer la destination choisie
-  if(type==='argent_recu'&&destRecepType){
-    const destImpacts=[];
-    if(destRecepType==='portefeuille') destImpacts.push({type:'portf',userId:currentUser.id,devise:destRecepDevise,delta:montant});
-    else if(destRecepType==='mobile_money'&&destRecepCompte) destImpacts.push({type:'mob',compteId:destRecepCompte,delta:montant});
-    if(destImpacts.length) await appliquerImpacts(destImpacts);
-  }
 
   // Commission argent_recu AGENT : avec destination choisie par l'agent
   if(comm>0&&type==='argent_recu'&&currentUser.role==='agent'){
