@@ -534,6 +534,9 @@ async function renderDashboard(){
   const mesPortf=cachePortf.filter(p=>p.utilisateur_id===currentUser.id);
   const mesMob=cacheMob.filter(m=>m.utilisateur_id===currentUser.id);
   const totalComm=(ops||[]).filter(o=>['commission','commission_mobile','commission_transfert'].includes(o.type_operation)).reduce((s,o)=>s+parseFloat(o.montant),0);
+  // Opérations clients du jour
+  const clientOpsToday=(ops||[]).filter(o=>['argent_recu','distribution_beneficiaire'].includes(o.type_operation));
+  const nbClientsNommes=new Set([...clientOpsToday.map(o=>o.nom_client),...clientOpsToday.map(o=>o.nom_beneficiaire)].filter(Boolean)).size;
 
   // Alertes contextuelles selon rôle
   let alertes='';
@@ -552,13 +555,16 @@ async function renderDashboard(){
     ?mesPortf.map(p=>`<div class="stat-card"><div class="stat-label">${p.devise} \u2022 Portefeuille</div><div class="stat-value" style="color:var(--accent)">${parseFloat(p.solde_actuel).toLocaleString('fr-FR',{minimumFractionDigits:2})}</div></div>`).join('')
     :'<div class="stat-card"><div class="stat-label">Aucun portefeuille</div><div class="stat-value text-muted">\u2014</div></div>';
   const mobH=mesMob.map(m=>`<div class="stat-card"><div class="stat-label">${m.plateforme} \u2022 ${m.devise}</div><div class="stat-value" style="color:var(--purple)">${parseFloat(m.solde_actuel).toLocaleString('fr-FR',{minimumFractionDigits:2})}</div></div>`).join('');
-  const recentH=(ops||[]).slice(0,10).map(o=>`<tr>
+  const recentH=(ops||[]).slice(0,10).map(o=>{
+    const isClient=['argent_recu','distribution_beneficiaire'].includes(o.type_operation);
+    const clientNom=o.nom_client||o.nom_beneficiaire||'';
+    return `<tr>
     <td style="font-size:11px;color:var(--text2)">${fmtD(o.cree_le)}</td>
     <td>${badgeOp(o.type_operation,false)}</td>
     <td class="mono">${fmtM(o.montant,o.devise_source)}</td>
     <td class="text-muted">${userName(o.auteur_id)}</td>
-    <td class="text-muted" style="font-size:12px">${o.nom_beneficiaire||o.nom_client||o.notes||'\u2014'}</td>
-  </tr>`).join('')||'<tr><td colspan="5" class="empty-state">Aucune op\u00e9ration aujourd\'hui</td></tr>';
+    <td style="font-size:12px">${isClient&&clientNom?`<span style="color:var(--teal)">\u{1F464} ${clientNom}</span>`:o.notes||'\u2014'}</td>
+  </tr>`;}).join('')||'<tr><td colspan="5" class="empty-state">Aucune op\u00e9ration aujourd\'hui</td></tr>';
 
   el.innerHTML=`
   <div class="page-header"><div class="page-title">Tableau de bord</div>
@@ -566,6 +572,7 @@ async function renderDashboard(){
   <div class="page-content">${alertes}
     <div class="stats-grid">
       <div class="stat-card"><div class="stat-label">Op\u00e9rations aujourd'hui</div><div class="stat-value" style="color:var(--accent)">${(ops||[]).length}</div></div>
+      <div class="stat-card"><div class="stat-label">Clients servis</div><div class="stat-value" style="color:var(--teal)">${clientOpsToday.length}</div><div class="stat-devise">${nbClientsNommes>0?nbClientsNommes+' client(s) identifi\u00e9(s)':'Aujourd\'hui'}</div></div>
       <div class="stat-card"><div class="stat-label">Commissions</div><div class="stat-value" style="color:var(--amber)">${fmtM(totalComm,'')}</div><div class="stat-devise">Aujourd'hui</div></div>
     </div>
     <div class="section-header"><div class="card-title" style="margin:0">Mes soldes actuels</div>
@@ -1490,6 +1497,52 @@ async function genererRapport(){
   const {data:ops}=await q;if(!ops?.length){el.innerHTML='<div class="empty-state">Aucune op\u00e9ration.</div>';return;}
   const commOps=ops.filter(o=>['commission','commission_mobile','commission_transfert'].includes(o.type_operation));
   const depOps=ops.filter(o=>o.type_operation==='depense');
+
+  // ── ACTIVITÉ CLIENTS ─────────────────────────────────────
+  const CLIENT_TYPES=['argent_recu','distribution_beneficiaire'];
+  const clientOps=ops.filter(o=>CLIENT_TYPES.includes(o.type_operation));
+  const nbArgentRecu=clientOps.filter(o=>o.type_operation==='argent_recu').length;
+  const nbDistrib=clientOps.filter(o=>o.type_operation==='distribution_beneficiaire').length;
+
+  // Clients uniques nommés sur la période
+  const tousClientsNoms=new Set([
+    ...clientOps.map(o=>o.nom_client),
+    ...clientOps.map(o=>o.nom_beneficiaire)
+  ].filter(Boolean));
+
+  // Par agent : argent reçu, distributions, clients uniques
+  const parAgentClients={};
+  clientOps.forEach(o=>{
+    const uid=o.auteur_id;
+    if(!parAgentClients[uid]) parAgentClients[uid]={nom:userName(uid),recu:0,distrib:0,clients:new Set()};
+    if(o.type_operation==='argent_recu') parAgentClients[uid].recu++;
+    if(o.type_operation==='distribution_beneficiaire') parAgentClients[uid].distrib++;
+    if(o.nom_client) parAgentClients[uid].clients.add(o.nom_client);
+    if(o.nom_beneficiaire) parAgentClients[uid].clients.add(o.nom_beneficiaire);
+  });
+
+  // Liste détaillée des opérations clients
+  const clientDetail=clientOps.slice(0,100).map(o=>{
+    const isRecu=o.type_operation==='argent_recu';
+    const clientNom=o.nom_client||o.nom_beneficiaire||'\u2014';
+    return `<tr>
+      <td style="font-size:11px;color:var(--text2);white-space:nowrap">${fmtD(o.cree_le)}</td>
+      <td>${badgeOp(o.type_operation,false)}</td>
+      <td style="font-weight:500">${clientNom}</td>
+      <td class="mono">${fmtM(o.montant,o.devise_source)}</td>
+      <td class="text-muted">${userName(o.auteur_id)}</td>
+      <td class="text-muted" style="font-size:12px">${o.notes||'\u2014'}</td>
+    </tr>`;
+  }).join('')||'<tr><td colspan="6" class="empty-state">Aucune op\u00e9ration client</td></tr>';
+
+  // Rendu par agent (clients)
+  const agentClientsR=Object.values(parAgentClients).map(a=>`<tr>
+    <td style="font-weight:500">${a.nom}</td>
+    <td class="mono" style="text-align:center">${a.recu}</td>
+    <td class="mono" style="text-align:center">${a.distrib}</td>
+    <td class="mono" style="text-align:center;font-weight:600;color:var(--teal)">${a.recu+a.distrib}</td>
+    <td class="mono" style="text-align:center;color:var(--accent)">${a.clients.size>0?a.clients.size:'\u2014'}</td>
+  </tr>`).join('')||'<tr><td colspan="5" class="empty-state">\u2014</td></tr>';
   const parType={};commOps.forEach(o=>{if(!parType[o.type_operation])parType[o.type_operation]={count:0,total:{}};parType[o.type_operation].count++;parType[o.type_operation].total[o.devise_source]=(parType[o.type_operation].total[o.devise_source]||0)+parseFloat(o.montant);});
   const parAgent={};commOps.forEach(o=>{if(!parAgent[o.auteur_id])parAgent[o.auteur_id]={nom:userName(o.auteur_id),comm:{},n:0};parAgent[o.auteur_id].n++;parAgent[o.auteur_id].comm[o.devise_source]=(parAgent[o.auteur_id].comm[o.devise_source]||0)+parseFloat(o.montant);});
   const depD={};depOps.forEach(o=>{depD[o.devise_source]=(depD[o.devise_source]||0)+parseFloat(o.montant);});
@@ -1498,12 +1551,43 @@ async function genererRapport(){
   const typeR=Object.entries(parType).map(([t,d])=>`<tr><td>${badgeOp(t,false)}</td><td>${d.count}</td><td>${Object.entries(d.total).map(([dv,v])=>`<span class="mono text-green">${fmtM(v,dv)}</span>`).join(' + ')}</td></tr>`).join('')||'<tr><td colspan="3" class="empty-state">Aucune</td></tr>';
   const agentR=Object.values(parAgent).map(a=>`<tr><td>${a.nom}</td><td>${a.n}</td><td>${Object.entries(a.comm).map(([d,v])=>`<span class="mono text-green">${fmtM(v,d)}</span>`).join(' ')}</td></tr>`).join('')||'<tr><td colspan="3" class="empty-state">\u2014</td></tr>';
   const detailR=commOps.slice(0,50).map(o=>`<tr><td style="font-size:11px;color:var(--text2)">${fmtD(o.cree_le)}</td><td>${badgeOp(o.type_operation,false)}</td><td class="mono text-green">+${fmtM(o.montant,o.devise_source)}</td><td>${userName(o.auteur_id)}</td><td class="text-muted" style="font-size:12px">${o.notes||o.nom_client||'\u2014'}</td></tr>`).join('')||'<tr><td colspan="5" class="empty-state">Aucune</td></tr>';
-  el.innerHTML=`<div class="alert alert-info">${commOps.length} commission(s) sur la p\u00e9riode</div>
+  el.innerHTML=`<div class="alert alert-info">${commOps.length} commission(s) \u2022 ${clientOps.length} op\u00e9ration(s) client sur la p\u00e9riode</div>
+
+  <!-- SECTION CLIENTS -->
+  <div class="card" style="margin-bottom:16px;border-left:3px solid var(--teal)">
+    <div class="card-title">\u{1F464} Activit\u00e9 clients</div>
+    <div class="stats-grid" style="margin-bottom:0">
+      <div class="stat-card" style="background:var(--bg3)"><div class="stat-label">Total op\u00e9rations client</div><div class="stat-value" style="color:var(--teal)">${clientOps.length}</div></div>
+      <div class="stat-card" style="background:var(--bg3)"><div class="stat-label">Argent re\u00e7u de clients</div><div class="stat-value" style="color:var(--green)">${nbArgentRecu}</div></div>
+      <div class="stat-card" style="background:var(--bg3)"><div class="stat-label">Distributions b\u00e9n\u00e9ficiaires</div><div class="stat-value" style="color:var(--accent)">${nbDistrib}</div></div>
+      <div class="stat-card" style="background:var(--bg3)"><div class="stat-label">Clients identifi\u00e9s (noms saisis)</div><div class="stat-value" style="color:var(--purple)">${tousClientsNoms.size}</div><div class="stat-devise">Clients uniques</div></div>
+    </div>
+  </div>
+
+  <!-- PAR AGENT : CLIENTS -->
+  <div class="card" style="margin-bottom:16px">
+    <div class="card-title">Activit\u00e9 clients par agent</div>
+    <div class="table-wrap" style="border:none"><table>
+    <thead><tr><th>Agent</th><th style="text-align:center">Re\u00e7us</th><th style="text-align:center">Distribu\u00e9s</th><th style="text-align:center">Total</th><th style="text-align:center">Clients uniques</th></tr></thead>
+    <tbody>${agentClientsR}</tbody></table></div>
+  </div>
+
+  <!-- COMMISSIONS -->
   <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px">
     <div class="card"><div class="card-title">R\u00e9sultat net par devise</div><div class="table-wrap" style="border:none"><table><thead><tr><th>Devise</th><th>Gains</th><th>D\u00e9penses</th><th>Net</th></tr></thead><tbody>${netR}</tbody></table></div></div>
     <div class="card"><div class="card-title">Par source de commission</div><div class="table-wrap" style="border:none"><table><thead><tr><th>Type</th><th>Nb</th><th>Total</th></tr></thead><tbody>${typeR}</tbody></table></div></div>
-    <div class="card"><div class="card-title">Par agent</div><div class="table-wrap" style="border:none"><table><thead><tr><th>Agent</th><th>Nb</th><th>Total</th></tr></thead><tbody>${agentR}</tbody></table></div></div>
+    <div class="card"><div class="card-title">Commissions par agent</div><div class="table-wrap" style="border:none"><table><thead><tr><th>Agent</th><th>Nb</th><th>Total</th></tr></thead><tbody>${agentR}</tbody></table></div></div>
   </div>
+
+  <!-- DÉTAIL OPÉRATIONS CLIENTS -->
+  <div class="card mt-4">
+    <div class="card-title">D\u00e9tail des op\u00e9rations clients (100 derni\u00e8res)</div>
+    <div class="table-wrap" style="border:none"><table>
+    <thead><tr><th>Date</th><th>Type</th><th>Client / B\u00e9n\u00e9ficiaire</th><th>Montant</th><th>Par</th><th>Notes</th></tr></thead>
+    <tbody>${clientDetail}</tbody></table></div>
+  </div>
+
+  <!-- DÉTAIL COMMISSIONS -->
   <div class="card mt-4"><div class="card-title">D\u00e9tail des commissions (50 derni\u00e8res)</div><div class="table-wrap" style="border:none"><table><thead><tr><th>Date</th><th>Type</th><th>Montant</th><th>Par</th><th>Notes</th></tr></thead><tbody>${detailR}</tbody></table></div></div>`;
 }
 
