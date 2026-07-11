@@ -407,6 +407,10 @@ const TYPES_OP={
 const fmtM=(v,d)=>v==null?'\u2014':parseFloat(v).toLocaleString('fr-FR',{minimumFractionDigits:2,maximumFractionDigits:2})+(d?' '+d:'');
 const fmtD=ts=>!ts?'\u2014':new Date(ts).toLocaleString('fr-FR',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'});
 const userName=id=>allUsers.find(u=>u.id===id)?.nom||'\u2014';
+// Helper : extraire UUID pur depuis valeur préfixée du formulaire
+// portf_BIF → null (portf identifié par userId+devise, pas UUID)
+// mob_uuid  → uuid (compte mobile a un UUID)
+const mobUuid=val=>val?.startsWith('mob_')?val.replace('mob_',''):null;
 const devisesOpts=(sel='USD')=>DEVISES.map(d=>`<option value="${d}"${d===sel?' selected':''}>${d}</option>`).join('');
 const usersOpts=role=>allUsers.filter(u=>role?u.role===role:true).map(u=>`<option value="${u.id}">${u.nom}</option>`).join('');
 function badgeOp(t,a){const o=TYPES_OP[t]||{label:t,color:'gray'};return `<span class="badge badge-${o.color}${a?' badge-strikethrough':''}">${o.label}</span>`;}
@@ -1116,6 +1120,7 @@ async function submitOperation(){
   }
 
   btn.disabled=true;btn.textContent='Enregistrement\u2026';
+  try{
 
   // ── RÉSOLUTION PROPRE (sans clés dupliquées) ──────────────
 
@@ -1208,7 +1213,7 @@ async function submitOperation(){
     source_type:sourceType||(type==='distribution_beneficiaire'?'portefeuille':null),
     source_compte_id:sourceType==='mobile_money'?sourceCompteId:null,
     statut_confirmation:type==='distribution_beneficiaire'?'en_attente':null,
-    commission_compte_id:commCompteId||null
+    commission_compte_id:mobUuid(commCompteId)  // null pour portf, UUID pour mob
   };
 
   const {data:inserted,error}=await sb.from('operations').insert(op).select().single();
@@ -1229,11 +1234,12 @@ async function submitOperation(){
     }
     // Crédit du montant NET (brut - frais) dans le compte choisi
     let commImpacts=[];
+    const resolvedCommId=mobUuid(commCompteId);
     if(commCompteId&&commCompteId.startsWith('portf_')){
       const dev=commCompteId.replace('portf_','');
       commImpacts=[{type:'portf',userId:currentUser.id,devise:dev,delta:commNette}];
     } else if(commCompteId&&commCompteId.startsWith('mob_')){
-      commImpacts=[{type:'mob',compteId:commCompteId.replace('mob_',''),delta:commNette}];
+      commImpacts=[{type:'mob',compteId:resolvedCommId,delta:commNette}];
     } else {
       commImpacts=calculerImpacts('commission_transfert',{auteurId:currentUser.id,montant:commNette,devise});
     }
@@ -1253,7 +1259,8 @@ async function submitOperation(){
 
   // Commission mobile money (dépôt mobile ou distribution) — lien vers l'opération source
   if(comm>0&&['mobile_money_entrant','distribution_beneficiaire'].includes(type)){
-    const compteComm=commCompteId||compteId;
+    const compteCommRaw=commCompteId||compteId;
+    const compteComm=mobUuid(compteCommRaw)||compteCommRaw; // résoudre mob_uuid→uuid
     const compInfo=cacheMob.find(m=>m.id===compteComm);
     const cImpact=calculerImpacts('commission_mobile',{auteurId:currentUser.id,montant:comm,devise,commCompteId:compteComm});
     await sb.from('operations').insert({
@@ -1289,8 +1296,14 @@ async function submitOperation(){
     });
   }
 
-  await chargerCaches();btn.disabled=false;btn.textContent='Enregistrer';
+  await chargerCaches();
   closeModal();alert('\u2713 Op\u00e9ration enregistr\u00e9e\u00a0!');showPage('dashboard');
+  }catch(err){
+    console.error('submitOperation:',err);
+    alert('Erreur\u00a0: '+(err?.message||String(err)));
+  }finally{
+    btn.disabled=false;btn.textContent='Enregistrer';
+  }
 }
 
 // === CONFIRMATION DE RÉCEPTION (AGENT) ===
@@ -1453,7 +1466,21 @@ async function submitAnnulation(){
   if(op.impacts_json){try{await appliquerImpacts(inverserImpacts(JSON.parse(op.impacts_json)));}catch(e){console.warn(e);}}
   const admins=allUsers.filter(u=>u.role==='admin'&&u.id!==currentUser.id);
   if(admins.length) await sb.from('notifications').insert(admins.map(a=>({destinataire_id:a.id,type:'annulation',lue:false,operation_id:currentAnnulOp.id,titre:`Annulation par ${currentUser.nom}`,message:`${currentAnnulOp.label} \u2014 ${fmtM(currentAnnulOp.montant,currentAnnulOp.devise)} \u2014 Motif\u00a0: ${motif}`})));
-  await chargerCaches();closeAnnul();alert('Annul\u00e9e et soldes r\u00e9ajust\u00e9s\u00a0!');renderHistorique();
+  await chargerCaches();closeAnnul();
+  // Annuler aussi les opérations liées (commissions avec lien_op_id)
+  const {data:linkedOps}=await sb.from('operations').select('*').eq('lien_op_id',currentAnnulOp.id).eq('annulee',false);
+  let linkedCount=0;
+  if(linkedOps?.length){
+    for(const linked of linkedOps){
+      await sb.from('operations').update({annulee:true}).eq('id',linked.id);
+      await sb.from('annulations').insert({operation_id:linked.id,annule_par:currentUser.id,motif:'[Auto] Li\u00e9 \u00e0 l\u2019annulation de '+fmtD(op.cree_le)});
+      if(linked.impacts_json){try{await appliquerImpacts(inverserImpacts(JSON.parse(linked.impacts_json)));}catch(e){}}
+      linkedCount++;
+    }
+    await chargerCaches();
+  }
+  alert('Annul\u00e9e\u00a0!'+(linkedCount>0?' ('+linkedCount+' commission(s) li\u00e9e(s) \u00e9galement annul\u00e9e(s))':''));
+  renderHistorique();
 }
 
 // === NOTIFICATIONS ===
