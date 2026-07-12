@@ -973,19 +973,14 @@ async function chargerDistribEnAttente(){
     <div><div style="font-size:13px;font-weight:500">${d.nom_beneficiaire||'B\u00e9n\u00e9ficiaire'} \u2014 <span class="mono">${fmtM(d.montant,d.devise_source)}</span></div>
     <div style="font-size:11px;color:var(--text3)">Par ${userName(d.auteur_id)} \u2022 ${fmtD(d.cree_le)}</div></div>
   </label>`).join('')
-  +`<div style="display:flex;justify-content:space-between;padding:8px;font-weight:500;background:var(--bg3);border-radius:0 0 var(--r) var(--r)"><span>Total s\u00e9lectionn\u00e9</span><span id="total-distrib-sel" class="mono text-green">${fmtM(total,'')}</span></div>
-  <div id="distrib-ecart-warn" class="alert alert-warn" style="display:none;margin-top:8px;font-size:12px">\u26a0 Le montant saisi diff\u00e8re du total s\u00e9lectionn\u00e9. Ajustez avant d\'enregistrer.</div>`;
-  // Total dynamique + contrôle écart avec le montant saisi
+  +`<div style="display:flex;justify-content:space-between;padding:8px;font-weight:500;background:var(--bg3);border-radius:0 0 var(--r) var(--r)"><span>Total s\u00e9lectionn\u00e9</span><span id="total-distrib-sel" class="mono text-green">${fmtM(total,'')}</span></div>`;
+  // Total dynamique (info seulement — pas de blocage, devises potentiellement différentes)
   const syncDistribTotal=()=>{
     const checks=document.querySelectorAll('input[name="distrib-select"]:checked');
     const tot=[...checks].reduce((s,cb)=>s+parseFloat(cb.dataset.montant||0),0);
     const elTot=document.getElementById('total-distrib-sel');if(elTot)elTot.textContent=fmtM(tot,'');
-    const montant=parseFloat(document.getElementById('f-montant')?.value)||0;
-    const warn=document.getElementById('distrib-ecart-warn');
-    if(warn)warn.style.display=(montant>0&&Math.abs(montant-tot)>0.01)?'block':'none';
   };
   document.querySelectorAll('input[name="distrib-select"]').forEach(cb=>cb.addEventListener('change',syncDistribTotal));
-  setTimeout(()=>document.getElementById('f-montant')?.addEventListener('input',syncDistribTotal),100);
 }
 
 // === SOUMISSION ===
@@ -1044,17 +1039,8 @@ async function submitOperation(){
     if(!tbaDestAgent){alert("Choisissez l'agent destinataire");return;}
     if(!tbaDestCompte){alert('Choisissez le compte destinataire');return;}
   }
-  // Contr\u00f4le montant envoi = total distributions transit
-  if(type==='envoi_employe'&&natureEnvoi==='transit'){
-    const cbs=document.querySelectorAll('input[name="distrib-select"]:checked');
-    if(cbs.length>0){
-      const tot=[...cbs].reduce((s,cb)=>s+parseFloat(cb.dataset.montant||0),0);
-      if(Math.abs(montant-tot)>0.01){
-        const ok=confirm('Le montant ('+fmtM(montant,devise)+') diff\u00e8re du total des distributions s\u00e9lectionn\u00e9es ('+fmtM(tot,'')+').\nConfirmer quand m\u00eame ?');
-        if(!ok){btn.disabled=false;btn.textContent='Enregistrer';return;}
-      }
-    }
-  }
+  // Contrôle montant transit supprimé : les distributions sont souvent
+  // dans une devise différente de l'envoi (BIF vs USD etc.)
   if(type==='distribution_beneficiaire'&&sourceType==='portefeuille'){
     const s=getSoldePortf(currentUser.id,devise);
     if(s!==null&&montant>s){alert(`Solde insuffisant\u00a0!\nDisponible\u00a0: ${fmtM(s,devise)}`);return;}
