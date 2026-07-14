@@ -1304,7 +1304,8 @@ async function submitOperation(){
     source_type:sourceType||(type==='distribution_beneficiaire'?'portefeuille':null),
     source_compte_id:sourceType==='mobile_money'?sourceCompteId:null,
     statut_confirmation:(type==='distribution_beneficiaire'||isDeferred)?'en_attente':null,
-    commission_compte_id:mobUuid(commCompteId)  // null pour portf, UUID pour mob
+    commission_compte_id:mobUuid(commCompteId),  // null pour portf, UUID pour mob
+    frais:frais>0?frais:null
   };
 
   const {data:inserted,error}=await sb.from('operations').insert(op).select().single();
@@ -1349,17 +1350,40 @@ async function submitOperation(){
     await appliquerImpacts(commImpacts);
   }
 
-  // Commission mobile money (dépôt mobile ou distribution) — lien vers l'opération source
+  // Commission mobile money (dépôt mobile ou distribution)
+  // Fix B+C : frais déduits de la commission + gestion portf vs mob correcte
   if(comm>0&&['mobile_money_entrant','distribution_beneficiaire'].includes(type)){
-    const compteCommRaw=commCompteId||compteId;
-    const compteComm=mobUuid(compteCommRaw)||compteCommRaw; // résoudre mob_uuid→uuid
-    const compInfo=cacheMob.find(m=>m.id===compteComm);
-    const cImpact=calculerImpacts('commission_mobile',{auteurId:currentUser.id,montant:comm,devise,commCompteId:compteComm});
+    const commMobNet=comm-frais; // commission nette après déduction des frais
+    if(commMobNet<0){
+      if(!confirm('La commission mobile nette est négative ('+fmtM(commMobNet,devise)+').\nCommission brute : '+fmtM(comm,devise)+' / Frais : '+fmtM(frais,devise)+'\nConfirmer quand même ?')){
+        // On annule l'opération déjà insérée
+        await sb.from('operations').update({annulee:true}).eq('id',inserted.id);
+        alert('Opération annulée.');return;
+      }
+    }
+    const compteCommRaw=commCompteId||null;
+    const isPortfComm=compteCommRaw?.startsWith('portf_');
+    const isMobComm=compteCommRaw?.startsWith('mob_');
+    const compteCommUuid=isMobComm?mobUuid(compteCommRaw):null;
+    const compInfo=cacheMob.find(m=>m.id===compteCommUuid);
+    // Impact selon type de compte destination commission
+    let cImpact;
+    if(isMobComm&&compteCommUuid){
+      cImpact=[{type:'mob',compteId:compteCommUuid,delta:commMobNet}];
+    } else if(isPortfComm){
+      cImpact=[{type:'portf',userId:currentUser.id,devise:compteCommRaw.replace('portf_',''),delta:commMobNet}];
+    } else {
+      // Pas de compte choisi → portf par défaut
+      cImpact=[{type:'portf',userId:currentUser.id,devise,delta:commMobNet}];
+    }
+    const noteComm='Commission '+(compInfo?.plateforme||(isPortfComm?'(portf)':'Mobile Money'));
     await sb.from('operations').insert({
       auteur_id:currentUser.id,type_operation:'commission_mobile',montant:comm,
       devise_source:devise,annulee:false,impacts_json:JSON.stringify(cImpact),
-      notes:'Commission '+(compInfo?.plateforme||'Mobile Money'),
-      commission_compte_id:compteComm||null,
+      notes:noteComm,
+      commission_compte_id:compteCommUuid||null,  // UUID pur uniquement pour mob
+      frais_commission:frais>0?frais:null,
+      commission_nette:commMobNet,
       lien_op_id:inserted?.id||null
     });
     await appliquerImpacts(cImpact);
@@ -1570,8 +1594,8 @@ async function submitAnnulation(){
   if(op.impacts_json){try{await appliquerImpacts(inverserImpacts(JSON.parse(op.impacts_json)));}catch(e){console.warn(e);}}
   const admins=allUsers.filter(u=>u.role==='admin'&&u.id!==currentUser.id);
   if(admins.length) await sb.from('notifications').insert(admins.map(a=>({destinataire_id:a.id,type:'annulation',lue:false,operation_id:currentAnnulOp.id,titre:`Annulation par ${currentUser.nom}`,message:`${currentAnnulOp.label} \u2014 ${fmtM(currentAnnulOp.montant,currentAnnulOp.devise)} \u2014 Motif\u00a0: ${motif}`})));
-  await chargerCaches();closeAnnul();
-  // Annuler aussi les opérations liées (commissions avec lien_op_id)
+
+  // Annuler les commissions liées (via lien_op_id)
   const {data:linkedOps}=await sb.from('operations').select('*').eq('lien_op_id',currentAnnulOp.id).eq('annulee',false);
   let linkedCount=0;
   if(linkedOps?.length){
@@ -1581,9 +1605,25 @@ async function submitAnnulation(){
       if(linked.impacts_json){try{await appliquerImpacts(inverserImpacts(JSON.parse(linked.impacts_json)));}catch(e){}}
       linkedCount++;
     }
-    await chargerCaches();
   }
-  alert('Annul\u00e9e\u00a0!'+(linkedCount>0?' ('+linkedCount+' commission(s) li\u00e9e(s) \u00e9galement annul\u00e9e(s))':''));
+
+  // Pour un argent_recu différé : annuler aussi les distributions liées via envoi_distributions
+  if(op.type_operation==='argent_recu'&&op.statut_confirmation==='en_attente'){
+    const {data:liens}=await sb.from('envoi_distributions').select('distribution_id').eq('envoi_id',currentAnnulOp.id);
+    if(liens?.length){
+      for(const lien of liens){
+        const {data:dist}=await sb.from('operations').select('*').eq('id',lien.distribution_id).eq('annulee',false).maybeSingle();
+        if(!dist) continue;
+        await sb.from('operations').update({annulee:true}).eq('id',dist.id);
+        await sb.from('annulations').insert({operation_id:dist.id,annule_par:currentUser.id,motif:'[Auto] Distribution annul\u00e9e suite \u00e0 l\u2019annulation de l\u2019argent re\u00e7u diff\u00e9r\u00e9 du '+fmtD(op.cree_le)});
+        if(dist.impacts_json){try{await appliquerImpacts(inverserImpacts(JSON.parse(dist.impacts_json)));}catch(e){}}
+        linkedCount++;
+      }
+    }
+  }
+
+  await chargerCaches();closeAnnul();
+  alert('Annul\u00e9e\u00a0!'+(linkedCount>0?' ('+linkedCount+' op\u00e9ration(s) li\u00e9e(s) \u00e9galement annul\u00e9e(s))':''));
   renderHistorique();
 }
 
@@ -1720,7 +1760,7 @@ async function genererRapport(){
     const totalCommNet=commsLiees.reduce((s,c)=>s+parseFloat(c.commission_nette??c.montant),0);
     const hasComm=commsLiees.length>0;
     const statut=hasComm
-      ?(totalCommNet>0?'<span class="badge badge-green">Rentable</span>':'<span class="badge badge-red">D\u00e9ficitaire</span>')
+      ?(totalCommNet>0?'<span class="badge badge-green">Rentable</span>':totalCommNet===0?'<span class="badge badge-gray">Neutre</span>':'<span class="badge badge-red">D\u00e9ficitaire</span>')
       :'<span class="badge badge-gray">Non suivi</span>';
     return `<tr>
       <td style="font-size:11px;color:var(--text2);white-space:nowrap">${fmtD(op.cree_le)}</td>
@@ -1736,8 +1776,11 @@ async function genererRapport(){
 
   // Résumé rentabilité global
   const totalMontantClients=clientOps.reduce((s,o)=>s+parseFloat(o.montant),0);
+  const totalCommBrutePeriode=commOps.reduce((s,c)=>s+parseFloat(c.montant),0);
   const totalCommNetPeriode=commOps.reduce((s,c)=>s+parseFloat(c.commission_nette??c.montant),0);
   const totalFraisCommPeriode=commOps.reduce((s,c)=>s+parseFloat(c.frais_commission||0),0);
+  // Frais des opérations (f-frais : frais sur mobile money, distribution, etc.)
+  const totalFraisOps=ops.filter(o=>parseFloat(o.frais||0)>0).reduce((s,o)=>s+parseFloat(o.frais),0);
 
   // Détail clients
   const clientDetail=clientOps.slice(0,100).map(o=>`<tr>
@@ -1767,8 +1810,8 @@ async function genererRapport(){
   <div class="stats-grid" style="margin-bottom:16px">
     <div class="stat-card"><div class="stat-label">Clients servis</div><div class="stat-value" style="color:var(--teal)">${nbArgentRecu}</div><div class="stat-devise">${tousClientsNoms.size>0?tousClientsNoms.size+' identifi\u00e9(s)':''}</div></div>
     <div class="stat-card"><div class="stat-label">Volume trait\u00e9</div><div class="stat-value" style="color:var(--accent)">${fmtM(totalMontantClients,'')}</div></div>
-    <div class="stat-card"><div class="stat-label">Commissions nettes</div><div class="stat-value" style="color:var(--green)">+${fmtM(totalCommNetPeriode,'')}</div></div>
-    <div class="stat-card"><div class="stat-label">Frais commission</div><div class="stat-value" style="color:var(--red)">${totalFraisCommPeriode>0?'-'+fmtM(totalFraisCommPeriode,''):'\u2014'}</div></div>
+    <div class="stat-card"><div class="stat-label">Commissions nettes</div><div class="stat-value" style="color:var(--green)">+${fmtM(totalCommNetPeriode,'')}</div><div class="stat-devise">Brut\u00a0: ${fmtM(totalCommBrutePeriode,'')}</div></div>
+    <div class="stat-card"><div class="stat-label">Frais (comm + ops)</div><div class="stat-value" style="color:var(--red)">${(totalFraisCommPeriode+totalFraisOps)>0?'-'+fmtM(totalFraisCommPeriode+totalFraisOps,''):'\u2014'}</div><div class="stat-devise">${totalFraisOps>0?'dont '+fmtM(totalFraisOps,'')+' ops':''}</div></div>
   </div>
 
   <!-- PAR AGENT : CLIENTS -->
