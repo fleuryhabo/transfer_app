@@ -1836,7 +1836,7 @@ async function saCreerUtilisateur(){
   if(!['admin','agent'].includes(roleChoix)){alert('R\u00f4le invalide. Tapez "admin" ou "agent".');return;}
   const mdp=prompt('Mot de passe initial (min 6 car.) :');
   if(!mdp||mdp.length<6){alert('Mot de passe trop court');return;}
-  const {data,error}=await sb.from('utilisateurs').insert({nom:nom.trim(),role:roleChoix,mot_de_passe:mdp,actif:true,doit_changer_mdp:true}).select().single();
+  const {data,error}=await sb.from('utilisateurs').insert({nom:nom.trim(),email:null,role:roleChoix,mot_de_passe:mdp,actif:true,doit_changer_mdp:true}).select().single();
   if(error){alert('Erreur : '+error.message);return;}
   allUsers.push(data);
   alert(`\u2713 Utilisateur "${nom}" cr\u00e9\u00e9 avec le r\u00f4le "${roleChoix}".\nIl devra changer son mot de passe \u00e0 la premi\u00e8re connexion.`);
