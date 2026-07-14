@@ -584,8 +584,13 @@ async function renderDashboard(){
       </span>`).join('');
       alertes+=`<div class="alert alert-warn">\u23f3 ${arDifferes.length} argent(s) re\u00e7u(s) en attente de confirmation\u00a0: ${arItems}</div>`;
     }
-    const {data:distPending}=await sb.from('operations').select('id').eq('auteur_id',currentUser.id).eq('type_operation','distribution_beneficiaire').eq('statut_confirmation','en_attente').eq('annulee',false);
-    if(distPending?.length) alertes+=`<div class="alert alert-warn">&#8987; ${distPending.length} distribution(s) en attente de couverture par un administrateur.</div>`;
+    const {data:distPending}=await sb.from('operations').select('id,admin_assigne_id').eq('auteur_id',currentUser.id).eq('type_operation','distribution_beneficiaire').eq('statut_confirmation','en_attente').eq('annulee',false);
+    if(distPending?.length){
+      const parAdmin=distPending.filter(d=>d.admin_assigne_id&&d.admin_assigne_id!==currentUser.id);
+      const parMoi=distPending.filter(d=>!d.admin_assigne_id||d.admin_assigne_id===currentUser.id);
+      if(parAdmin.length) alertes+=`<div class="alert alert-warn">&#8987; ${parAdmin.length} distribution(s) en attente de couverture par un administrateur.</div>`;
+      if(parMoi.length) alertes+=`<div class="alert alert-warn">&#8987; ${parMoi.length} distribution(s) liée(s) à vos argents reçus différés — à confirmer via le bouton ci-dessus.</div>`;
+    }
   }
   if(currentUser.role==='admin'){
     const {data:distAdmin}=await sb.from('operations').select('id').eq('admin_assigne_id',currentUser.id).eq('type_operation','distribution_beneficiaire').eq('statut_confirmation','en_attente').eq('annulee',false);
@@ -1142,9 +1147,8 @@ async function submitOperation(){
     if(s!==null&&montant>s){alert(`Solde Mobile Money insuffisant\u00a0!\nDisponible\u00a0: ${fmtM(s,devise)}`);return;}
   }
   if(type==='mobile_money_sortant'){
-    const compteId=document.getElementById('f-mobile')?.value;
-    const s=getSoldeMob(compteId);
-    if(s!==null&&montant>s){alert(`Solde Mobile Money insuffisant\u00a0!\nDisponible\u00a0: ${fmtM(s,devise)}`);return;}
+    const sMobSort=getSoldeMob(compteId);
+    if(sMobSort!==null&&montant>sMobSort){alert('Solde Mobile Money insuffisant\u00a0!\nDisponible\u00a0: '+fmtM(sMobSort,devise));return;}
   }
   if(type==='transfert_interne'&&transfertDir==='mob_to_portf'&&mobSrcId){
     const s=getSoldeMob(mobSrcId);
@@ -1175,6 +1179,11 @@ async function submitOperation(){
   const tbaDestAgent=document.getElementById('f-tba-dest-agent')?.value||null;
   const tbaDestCompte=document.getElementById('f-tba-dest-compte')?.value||null;
 
+  // Variables lues tôt car utilisées dans les validations
+  const modeReception=document.getElementById('f-mode-reception')?.value||'immediat';
+  const isDeferred=(type==='argent_recu'&&currentUser.role==='agent'&&modeReception==='differe');
+  const arLienId=document.getElementById('f-ar-lien')?.value||null;
+
   // Validations obligatoires
   if(['mobile_money_entrant','mobile_money_sortant'].includes(type)&&!compteId){alert('S\u00e9lectionnez un compte Mobile Money');return;}
   if(['envoi_employe','retrait_float'].includes(type)&&!agentId){alert('S\u00e9lectionnez un agent');return;}
@@ -1201,12 +1210,6 @@ async function submitOperation(){
 
   btn.disabled=true;btn.textContent='Enregistrement\u2026';
   try{
-
-  // Mode réception agent : immédiat ou différé
-  const modeReception=document.getElementById('f-mode-reception')?.value||'immediat';
-  const isDeferred=(type==='argent_recu'&&currentUser.role==='agent'&&modeReception==='differe');
-  // Lien distribution → argent_recu différé
-  const arLienId=document.getElementById('f-ar-lien')?.value||null;
 
   // ── RÉSOLUTION PROPRE (sans clés dupliquées) ──────────────
 
@@ -1518,7 +1521,8 @@ async function renderHistorique(){
     const dest=userName(o.destinataire_id)||o.nom_beneficiaire||o.nom_client||'\u2014';
     const annulInfo=annulMap[o.id];
     const conv=o.montant_converti?`<br><span style="font-size:10px;color:var(--text2)">\u2192 ${fmtM(o.montant_converti,o.devise_cible)}</span>`:'';
-    const statut=o.statut_confirmation?`<span class="badge badge-${o.statut_confirmation==='confirme'?'green':'amber'}">${o.statut_confirmation==='confirme'?'Confirm\u00e9':'En attente'}</span>`:'\u2014';
+    const statutLabel=o.statut_confirmation==='confirme'?'Confirm\u00e9':(o.type_operation==='argent_recu'?'En attente (diff\u00e9r\u00e9)':'En attente');
+    const statut=o.statut_confirmation?`<span class="badge badge-${o.statut_confirmation==='confirme'?'green':'amber'}">${statutLabel}</span>`:'\u2014';
     const motifAnnul=annulInfo?`<div style="font-size:11px;color:var(--red);margin-top:2px">\u2717 ${annulInfo.motif}</div>`:'';
     // Admin peut annuler n'importe quelle op récente, agent seulement les siennes
     const peutAnnuler=!o.annulee&&(o.auteur_id===currentUser.id||(currentUser.role==='admin'&&new Date(o.cree_le)>limite))&&new Date(o.cree_le)>limite;
