@@ -303,14 +303,19 @@ tr:hover td{background:rgba(79,142,247,.03);}
     </div>
     <nav class="sidebar-nav">
       <a onclick="showPage('dashboard')" id="nav-dashboard" class="active"><span class="nav-icon">◈</span> Tableau de bord</a>
-      <a onclick="showPage('nouvelle-op')" id="nav-nouvelle-op"><span class="nav-icon">+</span> Nouvelle opération</a>
-      <a onclick="showPage('historique')" id="nav-historique"><span class="nav-icon">≡</span> Historique</a>
-      <a onclick="showPage('soldes')" id="nav-soldes"><span class="nav-icon">◎</span> Soldes équipe</a>
-      <a onclick="showPage('cloture')" id="nav-cloture"><span class="nav-icon">✓</span> Clôture du jour</a>
-      <a onclick="showPage('taux')" id="nav-taux"><span class="nav-icon">⇄</span> Taux de change</a>
-      <a onclick="showPage('notifications')" id="nav-notifications"><span class="nav-icon">N</span> Notifications <span id="notif-badge" class="notif-badge" style="display:none">0</span></a>
+      <!-- Financial : admin + agent uniquement -->
+      <a onclick="showPage('nouvelle-op')" id="nav-nouvelle-op" class="nav-financial"><span class="nav-icon">+</span> Nouvelle opération</a>
+      <a onclick="showPage('historique')" id="nav-historique" class="nav-financial"><span class="nav-icon">≡</span> Historique</a>
+      <a onclick="showPage('soldes')" id="nav-soldes" class="nav-financial"><span class="nav-icon">◎</span> Soldes équipe</a>
+      <a onclick="showPage('cloture')" id="nav-cloture" class="nav-financial"><span class="nav-icon">✓</span> Clôture du jour</a>
+      <a onclick="showPage('taux')" id="nav-taux" class="nav-financial"><span class="nav-icon">⇄</span> Taux de change</a>
+      <a onclick="showPage('notifications')" id="nav-notifications" class="nav-financial"><span class="nav-icon">N</span> Notifications <span id="notif-badge" class="notif-badge" style="display:none">0</span></a>
       <a onclick="showPage('rapports')" id="nav-rapports" class="nav-admin-only"><span class="nav-icon">R</span> Rapports</a>
-      <a onclick="showPage('admin')" id="nav-admin" class="nav-admin-only"><span class="nav-icon">A</span> Administration</a>
+      <!-- Superadmin uniquement -->
+      <a onclick="showPage('sa-utilisateurs')" id="nav-sa-utilisateurs" class="nav-superadmin-only"><span class="nav-icon">👥</span> Utilisateurs</a>
+      <a onclick="showPage('sa-configuration')" id="nav-sa-configuration" class="nav-superadmin-only"><span class="nav-icon">⚙</span> Configuration</a>
+      <a onclick="showPage('sa-supervision')" id="nav-sa-supervision" class="nav-superadmin-only"><span class="nav-icon">👁</span> Supervision</a>
+      <!-- Commun -->
       <a onclick="showPage('mon-mdp')" id="nav-mon-mdp"><span class="nav-icon">M</span> Mon mot de passe</a>
     </nav>
     <div class="sidebar-user">
@@ -328,8 +333,11 @@ tr:hover td{background:rgba(79,142,247,.03);}
     <div id="page-taux" style="display:none"></div>
     <div id="page-notifications" style="display:none"></div>
     <div id="page-rapports" style="display:none"></div>
-    <div id="page-admin" style="display:none"></div>
     <div id="page-mon-mdp" style="display:none"></div>
+    <!-- Superadmin -->
+    <div id="page-sa-utilisateurs" style="display:none"></div>
+    <div id="page-sa-configuration" style="display:none"></div>
+    <div id="page-sa-supervision" style="display:none"></div>
   </div>
 </div>
 
@@ -493,6 +501,9 @@ async function doLogin(){
   if(!mdp){err.textContent='Entrez votre mot de passe.';err.style.display='block';return;}
   const {data:user}=await sb.from('utilisateurs').select('*').eq('id',uid).eq('mot_de_passe',mdp).maybeSingle();
   if(!user){err.textContent='Mot de passe incorrect.';err.style.display='block';return;}
+  if(!user.actif){err.textContent='Ce compte a \u00e9t\u00e9 d\u00e9sactiv\u00e9. Contactez le super administrateur.';err.style.display='block';return;}
+  // Enregistrer la connexion
+  await sb.from('connexions').insert({utilisateur_id:user.id,navigateur:navigator.userAgent.substring(0,250)});
   currentUser=user;sessionStorage.setItem('tp_user',JSON.stringify(user));
   if(user.doit_changer_mdp){document.getElementById('login-page').style.display='none';document.getElementById('change-mdp-overlay').style.display='flex';return;}
   showApp();
@@ -509,27 +520,42 @@ async function submitChangeMdp(){
 function doLogout(){sessionStorage.removeItem('tp_user');currentUser=null;document.getElementById('app').style.display='none';document.getElementById('login-page').style.display='flex';document.getElementById('login-mdp').value='';}
 async function showApp(){
   document.getElementById('login-page').style.display='none';document.getElementById('app').style.display='flex';
+  const isSA=currentUser.role==='superadmin';
+  const isAdmin=currentUser.role==='admin';
   document.getElementById('sidebar-username').textContent=currentUser.nom;
-  document.getElementById('sidebar-role').textContent=currentUser.role==='admin'?'Administrateur':'Agent';
-  document.querySelectorAll('.nav-admin-only').forEach(l=>l.style.display=currentUser.role==='admin'?'flex':'none');
-  // Synchroniser le drawer mobile
+  document.getElementById('sidebar-role').textContent=isSA?'Super Administrateur':isAdmin?'Administrateur':'Agent';
+  // Navigation selon rôle
+  document.querySelectorAll('.nav-admin-only').forEach(l=>l.style.display=isAdmin?'flex':'none');
+  document.querySelectorAll('.nav-superadmin-only').forEach(l=>l.style.display=isSA?'flex':'none');
+  document.querySelectorAll('.nav-financial').forEach(l=>l.style.display=isSA?'none':'flex');
+  // Drawer mobile
   const du=document.getElementById('drawer-username');if(du)du.textContent=currentUser.nom;
-  const dr=document.getElementById('drawer-role');if(dr)dr.textContent=currentUser.role==='admin'?'Administrateur':'Agent';
-  document.querySelectorAll('.drawer-item.nav-admin-only').forEach(l=>l.style.display=currentUser.role==='admin'?'flex':'none');
-  await chargerDevises();await chargerCaches();await refreshNotifBadge();showPage('dashboard');
+  const dr=document.getElementById('drawer-role');if(dr)dr.textContent=document.getElementById('sidebar-role').textContent;
+  document.querySelectorAll('.drawer-item.nav-admin-only').forEach(l=>l.style.display=isAdmin?'flex':'none');
+  document.querySelectorAll('.drawer-item.nav-superadmin-only').forEach(l=>l.style.display=isSA?'flex':'none');
+  document.querySelectorAll('.drawer-item.nav-financial').forEach(l=>l.style.display=isSA?'none':'flex');
+  if(!isSA){await chargerDevises();await chargerCaches();await refreshNotifBadge();}
+  showPage('dashboard');
 }
-async function chargerCaches(){const [{data:p},{data:m}]=await Promise.all([sb.from('comptes_portefeuille').select('*'),sb.from('comptes_mobile_money').select('*').eq('actif',true)]);cachePortf=p||[];cacheMob=m||[];}
-async function refreshNotifBadge(){const {data}=await sb.from('notifications').select('id').eq('destinataire_id',currentUser.id).eq('lue',false);const n=(data||[]).length;const b=document.getElementById('notif-badge');b.style.display=n>0?'inline':'none';b.textContent=n;}
 function showPage(page){
   document.querySelectorAll('#main>div').forEach(d=>d.style.display='none');
   document.querySelectorAll('.sidebar-nav a').forEach(a=>a.classList.remove('active'));
-  document.getElementById('page-'+page).style.display='block';
+  const el=document.getElementById('page-'+page);if(el)el.style.display='block';
   const nav=document.getElementById('nav-'+page);if(nav)nav.classList.add('active');
-  ({dashboard:renderDashboard,'nouvelle-op':renderNouvelleOp,historique:renderHistorique,rapports:renderRapports,soldes:renderSoldes,cloture:renderCloture,taux:renderTaux,notifications:renderNotifications,admin:renderAdmin,'mon-mdp':renderMonMdp})[page]?.();
+  const R={
+    dashboard:renderDashboard,'nouvelle-op':renderNouvelleOp,historique:renderHistorique,
+    rapports:renderRapports,soldes:renderSoldes,cloture:renderCloture,taux:renderTaux,
+    notifications:renderNotifications,'mon-mdp':renderMonMdp,
+    'sa-utilisateurs':renderSaUtilisateurs,'sa-configuration':renderSaConfiguration,'sa-supervision':renderSaSupervision
+  };
+  if(R[page])R[page]();
 }
+async function chargerCaches(){const [{data:p},{data:m}]=await Promise.all([sb.from('comptes_portefeuille').select('*'),sb.from('comptes_mobile_money').select('*').eq('actif',true)]);cachePortf=p||[];cacheMob=m||[];}
+async function refreshNotifBadge(){const {data}=await sb.from('notifications').select('id').eq('destinataire_id',currentUser.id).eq('lue',false);const n=(data||[]).length;const b=document.getElementById('notif-badge');if(b){b.style.display=n>0?'inline':'none';b.textContent=n;}}
 
 // === DASHBOARD ===
 async function renderDashboard(){
+  if(currentUser.role==='superadmin'){renderSaDashboard();return;}
   const el=document.getElementById('page-dashboard');
   el.innerHTML='<div class="page-content"><div class="loading">Chargement...</div></div>';
   await chargerCaches();
@@ -1691,81 +1717,6 @@ async function genererRapport(){
   <div class="card mt-4"><div class="card-title">D\u00e9tail des commissions (50 derni\u00e8res)</div><div class="table-wrap" style="border:none"><table><thead><tr><th>Date</th><th>Type</th><th>Montant</th><th>Par</th><th>Notes</th></tr></thead><tbody>${detailR}</tbody></table></div></div>`;
 }
 
-// === ADMINISTRATION ===
-async function renderAdmin(){
-  if(currentUser.role!=='admin'){document.getElementById('page-admin').innerHTML='<div class="page-content"><div class="alert alert-error">Acc\u00e8s refus\u00e9.</div></div>';return;}
-  const el=document.getElementById('page-admin');
-  await chargerCaches();
-  const {data:users}=await sb.from('utilisateurs').select('*').order('nom');
-  const portfRows=cachePortf.map(p=>{const u=allUsers.find(x=>x.id===p.utilisateur_id);return `<tr><td>${u?.nom||'\u2014'}</td><td><span class="badge badge-blue">${p.devise}</span></td><td class="mono">${fmtM(p.solde_actuel,'')}</td><td>${fmtM(p.float_initial,'')}</td><td><button class="btn btn-secondary btn-sm" onclick="ajusterSolde('${p.utilisateur_id}','${p.devise}',${p.solde_actuel})">Ajuster</button></td></tr>`;}).join('')||'<tr><td colspan="5" class="empty-state">Aucun</td></tr>';
-  const mobRows=cacheMob.map(m=>{const u=allUsers.find(x=>x.id===m.utilisateur_id);return `<tr><td>${u?.nom||'\u2014'}</td><td><span class="badge badge-purple">${m.plateforme}</span></td><td>${m.numero}</td><td class="mono">${fmtM(m.solde_actuel,'')}</td><td><button class="btn btn-secondary btn-sm" onclick="ajusterSoldeMob('${m.id}',${m.solde_actuel})">Ajuster</button></td></tr>`;}).join('')||'<tr><td colspan="5" class="empty-state">Aucun</td></tr>';
-  const userRows=(users||[]).map(u=>`<tr><td>${u.nom}</td><td><span class="badge badge-${u.role==='admin'?'blue':'purple'}">${u.role}</span></td><td><span class="badge badge-${u.doit_changer_mdp?'amber':'green'}">${u.doit_changer_mdp?'Doit changer':'OK'}</span></td><td><button class="btn btn-secondary btn-sm" onclick="resetMdp('${u.id}','${u.nom.replace(/'/g,"\\'")}')">R\u00e9initialiser</button></td></tr>`).join('');
-  el.innerHTML=`<div class="page-header"><div class="page-title">Administration</div></div><div class="page-content">
-  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:20px">
-    <div>
-      <div class="card"><div class="card-title">Ajouter un portefeuille</div>
-        <div class="form-group"><label>Utilisateur</label><select id="a-user"><option value="">--</option>${usersOpts()}</select></div>
-        <div class="form-group" style="margin-top:10px"><label>Nom du portefeuille (optionnel)</label><input type="text" id="a-nom" placeholder="Ex: Caisse principale\u2026"></div>
-        <div class="form-grid" style="margin-top:10px"><div class="form-group"><label>Devise</label><select id="a-devise">${devisesOpts()}</select></div><div class="form-group"><label>Solde initial</label><input type="number" id="a-float" placeholder="0" step="0.01"></div></div>
-        <button class="btn btn-primary btn-sm" style="margin-top:12px" onclick="addPortefeuille()">Ajouter</button>
-        <div class="form-hint" style="margin-top:8px">Pour les agents, Inoti et Lumicash sont cr\u00e9\u00e9s automatiquement.</div>
-      </div>
-      <div class="card mt-4"><div class="card-title">Portefeuilles existants</div><div class="table-wrap" style="border:none"><table><thead><tr><th>Utilisateur</th><th>Devise</th><th>Solde</th><th>Float init.</th><th></th></tr></thead><tbody>${portfRows}</tbody></table></div></div>
-    </div>
-    <div>
-      <div class="card"><div class="card-title">Ajouter un compte Mobile Money</div>
-        <div class="form-group"><label>Agent</label><select id="mm-user"><option value="">--</option>${usersOpts('agent')}</select></div>
-        <div class="form-grid" style="margin-top:10px"><div class="form-group"><label>Plateforme</label><input type="text" id="mm-plat" placeholder="M-Pesa, Ecocash\u2026"></div><div class="form-group"><label>Num\u00e9ro</label><input type="text" id="mm-num" placeholder="+257\u2026"></div></div>
-        <div class="form-grid" style="margin-top:10px"><div class="form-group"><label>Devise</label><select id="mm-devise">${devisesOpts('BIF')}</select></div><div class="form-group"><label>Solde initial</label><input type="number" id="mm-solde" placeholder="0" step="0.01"></div></div>
-        <button class="btn btn-primary btn-sm" style="margin-top:12px" onclick="addMobile()">Ajouter</button>
-      </div>
-      <div class="card mt-4"><div class="card-title">Comptes Mobile Money</div><div class="table-wrap" style="border:none"><table><thead><tr><th>Utilisateur</th><th>Plateforme</th><th>Num\u00e9ro</th><th>Solde</th><th></th></tr></thead><tbody>${mobRows}</tbody></table></div></div>
-    </div>
-  </div>
-  <div class="card mt-6"><div class="card-title">Devises disponibles</div>
-    <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px">${DEVISES.map(d=>`<span class="badge badge-gray">${d}</span>`).join('')}</div>
-    <div class="form-grid">
-      <div class="form-group"><label>Ajouter une devise</label><input type="text" id="new-devise-code" placeholder="Ex: MAD, TND…" maxlength="5" style="text-transform:uppercase"></div>
-      <div class="form-group"><label>Nom (optionnel)</label><input type="text" id="new-devise-nom" placeholder="Ex: Dirham marocain"></div>
-    </div>
-    <button class="btn btn-secondary btn-sm" style="margin-top:10px" onclick="addDevise()">Ajouter la devise</button>
-  </div>
-  <div class="card mt-6"><div class="card-title">Gestion des utilisateurs</div><div class="table-wrap" style="border:none"><table><thead><tr><th>Nom</th><th>R\u00f4le</th><th>Mot de passe</th><th>Action</th></tr></thead><tbody>${userRows}</tbody></table></div></div>
-  </div>`;
-}
-async function ajusterSolde(uid,devise,actuel){const n=prompt(`Nouveau solde ${devise} pour ${userName(uid)}\nActuel\u00a0: ${fmtM(actuel,'')}`);if(n===null)return;const v=parseFloat(n);if(isNaN(v)){alert('Invalide');return;}await sb.from('comptes_portefeuille').update({solde_actuel:v,mis_a_jour_le:new Date().toISOString()}).eq('utilisateur_id',uid).eq('devise',devise);await chargerCaches();alert('\u2713 Ajust\u00e9');renderAdmin();}
-async function ajusterSoldeMob(cid,actuel){const mob=cacheMob.find(m=>m.id===cid);const n=prompt(`Nouveau solde ${mob?.plateforme||'Mobile Money'}\nActuel\u00a0: ${fmtM(actuel,'')}`);if(n===null)return;const v=parseFloat(n);if(isNaN(v)){alert('Invalide');return;}await sb.from('comptes_mobile_money').update({solde_actuel:v}).eq('id',cid);await chargerCaches();alert('\u2713 Ajust\u00e9');renderAdmin();}
-async function resetMdp(uid,nom){const n=prompt(`Nouveau mot de passe temporaire pour ${nom}\u00a0:`);if(!n||n.length<4){alert('Trop court');return;}await sb.from('utilisateurs').update({mot_de_passe:n,doit_changer_mdp:true}).eq('id',uid);alert(`\u2713 Mot de passe de ${nom} r\u00e9initialis\u00e9. Il devra le changer \u00e0 la prochaine connexion.`);renderAdmin();}
-async function addPortefeuille(){
-  const uid=document.getElementById('a-user').value,devise=document.getElementById('a-devise').value,fl=parseFloat(document.getElementById('a-float').value)||0;
-  if(!uid){alert('Choisissez un utilisateur');return;}
-  const nomP=document.getElementById('a-nom')?.value||null;
-  await sb.from('comptes_portefeuille').upsert({utilisateur_id:uid,devise,solde_actuel:fl,float_initial:fl,nom:nomP||undefined},{onConflict:'utilisateur_id,devise'});
-  const user=allUsers.find(u=>u.id===uid);
-  if(user?.role==='agent'){
-    const {data:existing}=await sb.from('comptes_mobile_money').select('plateforme').eq('utilisateur_id',uid);
-    const plats=(existing||[]).map(e=>e.plateforme.toLowerCase());
-    if(!plats.includes('inoti')) await sb.from('comptes_mobile_money').insert({utilisateur_id:uid,plateforme:'Inoti',numero:'A configurer',devise:'BIF',solde_actuel:0});
-    if(!plats.includes('lumicash')) await sb.from('comptes_mobile_money').insert({utilisateur_id:uid,plateforme:'Lumicash',numero:'A configurer',devise:'BIF',solde_actuel:0});
-  }
-  await chargerCaches();alert('\u2713 Ajout\u00e9\u00a0!');renderAdmin();
-}
-async function addDevise(){
-  const code=(document.getElementById('new-devise-code')?.value||'').toUpperCase().trim();
-  const nom=document.getElementById('new-devise-nom')?.value||null;
-  if(!code||code.length<2){alert('Code devise invalide (2-5 lettres)');return;}
-  if(DEVISES.includes(code)){alert('Cette devise existe déjà');return;}
-  await sb.from('devises_custom').upsert({code,nom,cree_par:currentUser.id},{onConflict:'code'});
-  DEVISES.push(code);
-  alert('✓ Devise '+code+' ajoutée');renderAdmin();
-}
-async function addMobile(){
-  const uid=document.getElementById('mm-user').value,plat=document.getElementById('mm-plat').value,num=document.getElementById('mm-num').value,devise=document.getElementById('mm-devise').value,solde=parseFloat(document.getElementById('mm-solde').value)||0;
-  if(!uid||!plat||!num){alert('Remplissez tous les champs');return;}
-  await sb.from('comptes_mobile_money').insert({utilisateur_id:uid,plateforme:plat,numero:num,devise,solde_actuel:solde});
-  await chargerCaches();alert('\u2713 Ajout\u00e9\u00a0!');renderAdmin();
-}
-
 // === MON MOT DE PASSE ===
 function renderMonMdp(){
   const el=document.getElementById('page-mon-mdp');
@@ -1784,8 +1735,253 @@ async function saveMonMdp(){
   ['mdp-current','mdp-new1','mdp-new2'].forEach(id=>document.getElementById(id).value='');
 }
 
+// === DASHBOARD SUPERADMIN ===
+async function renderSaDashboard(){
+  const el=document.getElementById('page-dashboard');
+  el.innerHTML='<div class="page-content"><div class="loading">Chargement\u2026</div></div>';
+  const [{data:users},{data:connexions},{data:ajustements}]=await Promise.all([
+    sb.from('utilisateurs').select('*').order('nom'),
+    sb.from('connexions').select('*,utilisateurs(nom,role)').order('cree_le',{ascending:false}).limit(10),
+    sb.from('ajustements_solde').select('*,utilisateurs!ajustements_solde_fait_par_fkey(nom)').order('cree_le',{ascending:false}).limit(5)
+  ]);
+  const nbUsers=(users||[]).length,nbActifs=(users||[]).filter(u=>u.actif).length;
+  const nbAdmins=(users||[]).filter(u=>u.role==='admin').length;
+  const nbAgents=(users||[]).filter(u=>u.role==='agent').length;
+  const connsH=(connexions||[]).map(c=>`<tr>
+    <td style="font-size:11px;color:var(--text2)">${fmtD(c.cree_le)}</td>
+    <td style="font-weight:500">${c.utilisateurs?.nom||'\u2014'}</td>
+    <td><span class="badge badge-${c.utilisateurs?.role==='admin'?'blue':'purple'}">${c.utilisateurs?.role||'\u2014'}</span></td>
+    <td style="font-size:11px;color:var(--text3);max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${(c.navigateur||'\u2014').split(' ').slice(0,3).join(' ')}</td>
+  </tr>`).join('')||'<tr><td colspan="4" class="empty-state">Aucune connexion</td></tr>';
+  const ajustH=(ajustements||[]).map(a=>`<tr>
+    <td style="font-size:11px;color:var(--text2)">${fmtD(a.cree_le)}</td>
+    <td>${a.utilisateurs?.nom||'\u2014'}</td>
+    <td>${a.compte_ref}</td>
+    <td class="mono">${fmtM(a.ancien_solde,'')} \u2192 ${fmtM(a.nouveau_solde,'')}</td>
+    <td style="font-size:12px;color:var(--text3)">${a.motif}</td>
+  </tr>`).join('')||'<tr><td colspan="5" class="empty-state">Aucun ajustement</td></tr>';
+  el.innerHTML=`<div class="page-header"><div class="page-title">Super Administration</div>
+  <div class="page-sub">Bonjour, ${currentUser.nom}</div></div>
+  <div class="page-content">
+    <div class="stats-grid">
+      <div class="stat-card"><div class="stat-label">Utilisateurs actifs</div><div class="stat-value" style="color:var(--green)">${nbActifs}</div><div class="stat-devise">sur ${nbUsers} total</div></div>
+      <div class="stat-card"><div class="stat-label">Administrateurs</div><div class="stat-value" style="color:var(--accent)">${nbAdmins}</div></div>
+      <div class="stat-card"><div class="stat-label">Agents</div><div class="stat-value" style="color:var(--purple)">${nbAgents}</div></div>
+    </div>
+    <div class="mt-6"><div class="section-header"><div class="card-title" style="margin:0">Derni\u00e8res connexions</div>
+    <button class="btn btn-secondary btn-sm" onclick="showPage('sa-supervision')">Voir tout</button></div>
+    <div class="table-wrap"><table><thead><tr><th>Date</th><th>Utilisateur</th><th>R\u00f4le</th><th>Navigateur</th></tr></thead><tbody>${connsH}</tbody></table></div></div>
+    ${ajustements?.length?`<div class="mt-6"><div class="card-title">Derniers ajustements de solde</div>
+    <div class="table-wrap"><table><thead><tr><th>Date</th><th>Par</th><th>Compte</th><th>Solde</th><th>Motif</th></tr></thead><tbody>${ajustH}</tbody></table></div></div>`:''}
+  </div>`;
+}
+
+// === PAGE UTILISATEURS (superadmin) ===
+async function renderSaUtilisateurs(){
+  if(currentUser.role!=='superadmin')return;
+  const el=document.getElementById('page-sa-utilisateurs');
+  el.innerHTML='<div class="page-content"><div class="loading">Chargement\u2026</div></div>';
+  const {data:users}=await sb.from('utilisateurs').select('*').order('nom');
+  const {data:dernConns}=await sb.from('connexions').select('utilisateur_id,cree_le').order('cree_le',{ascending:false});
+  const dernConnMap={};
+  (dernConns||[]).forEach(c=>{if(!dernConnMap[c.utilisateur_id])dernConnMap[c.utilisateur_id]=c.cree_le;});
+  const rows=(users||[]).map(u=>`<tr>
+    <td style="font-weight:500">${u.nom}</td>
+    <td><span class="badge badge-${u.role==='superadmin'?'amber':u.role==='admin'?'blue':'purple'}">${u.role}</span></td>
+    <td><span class="badge badge-${u.actif?'green':'gray'}">${u.actif?'Actif':'Inactif'}</span></td>
+    <td style="font-size:11px;color:var(--text3)">${dernConnMap[u.id]?fmtD(dernConnMap[u.id]):'Jamais'}</td>
+    <td><span class="badge badge-${u.doit_changer_mdp?'amber':'green'}">${u.doit_changer_mdp?'Doit changer':'OK'}</span></td>
+    <td style="white-space:nowrap;display:flex;gap:6px;flex-wrap:wrap">
+      ${u.role!=='superadmin'?`<button class="btn btn-secondary btn-sm" onclick="saToggleActif('${u.id}','${u.nom}',${u.actif})">${u.actif?'D\u00e9sactiver':'Activer'}</button>
+      <button class="btn btn-secondary btn-sm" onclick="saChangeRole('${u.id}','${u.nom}','${u.role}')">Changer r\u00f4le</button>
+      <button class="btn btn-secondary btn-sm" onclick="saResetMdp('${u.id}','${u.nom}')">Reset mdp</button>`:'<span class="text-muted" style="font-size:11px">Compte prot\u00e9g\u00e9</span>'}
+    </td>
+  </tr>`).join('');
+  el.innerHTML=`<div class="page-header"><div class="page-title">Utilisateurs</div>
+  <button class="btn btn-primary" onclick="saCreerUtilisateur()" style="margin:16px 0 0 16px">+ Nouvel utilisateur</button></div>
+  <div class="page-content">
+    <div class="table-wrap"><table>
+      <thead><tr><th>Nom</th><th>R\u00f4le</th><th>Statut</th><th>Derni\u00e8re connexion</th><th>Mot de passe</th><th>Actions</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table></div>
+  </div>`;
+}
+
+async function saToggleActif(uid,nom,actif){
+  const action=actif?'d\u00e9sactiver':'activer';
+  if(!confirm(`Voulez-vous ${action} le compte de ${nom} ?`))return;
+  await sb.from('utilisateurs').update({actif:!actif}).eq('id',uid);
+  alert(`\u2713 Compte de ${nom} ${actif?'d\u00e9sactiv\u00e9':'activ\u00e9'}.`);
+  renderSaUtilisateurs();
+}
+async function saChangeRole(uid,nom,roleActuel){
+  const roles=['admin','agent'];const autre=roles.find(r=>r!==roleActuel)||'agent';
+  if(!confirm(`Changer ${nom} de "${roleActuel}" \u00e0 "${autre}" ?`))return;
+  await sb.from('utilisateurs').update({role:autre}).eq('id',uid);
+  allUsers=(allUsers||[]).map(u=>u.id===uid?{...u,role:autre}:u);
+  alert(`\u2713 R\u00f4le de ${nom} chang\u00e9 en "${autre}".`);
+  renderSaUtilisateurs();
+}
+async function saResetMdp(uid,nom){
+  const mdp=prompt(`Nouveau mot de passe temporaire pour ${nom} :`);
+  if(!mdp||mdp.length<4){alert('Trop court (min 4 caract\u00e8res)');return;}
+  await sb.from('utilisateurs').update({mot_de_passe:mdp,doit_changer_mdp:true}).eq('id',uid);
+  alert(`\u2713 Mot de passe de ${nom} r\u00e9initialis\u00e9. Il devra le changer \u00e0 la prochaine connexion.`);
+}
+async function saCreerUtilisateur(){
+  const nom=prompt('Nom complet du nouvel utilisateur :');if(!nom?.trim())return;
+  const roleChoix=prompt('R\u00f4le ? Tapez "admin" ou "agent" :')?.toLowerCase();
+  if(!['admin','agent'].includes(roleChoix)){alert('R\u00f4le invalide. Tapez "admin" ou "agent".');return;}
+  const mdp=prompt('Mot de passe initial (min 6 car.) :');
+  if(!mdp||mdp.length<6){alert('Mot de passe trop court');return;}
+  const {data,error}=await sb.from('utilisateurs').insert({nom:nom.trim(),role:roleChoix,mot_de_passe:mdp,actif:true,doit_changer_mdp:true}).select().single();
+  if(error){alert('Erreur : '+error.message);return;}
+  allUsers.push(data);
+  alert(`\u2713 Utilisateur "${nom}" cr\u00e9\u00e9 avec le r\u00f4le "${roleChoix}".\nIl devra changer son mot de passe \u00e0 la premi\u00e8re connexion.`);
+  renderSaUtilisateurs();
+}
+
+// === PAGE CONFIGURATION (superadmin) ===
+async function renderSaConfiguration(){
+  if(currentUser.role!=='superadmin')return;
+  const el=document.getElementById('page-sa-configuration');
+  el.innerHTML='<div class="page-content"><div class="loading">Chargement\u2026</div></div>';
+  await chargerCaches();
+  const {data:users}=await sb.from('utilisateurs').select('id,nom,role').eq('actif',true).order('nom');
+  const portfRows=cachePortf.map(p=>{const u=(users||[]).find(x=>x.id===p.utilisateur_id);return `<tr>
+    <td>${u?.nom||'\u2014'}</td><td><span class="badge badge-gray">${p.nom||p.devise}</span></td><td><span class="badge badge-blue">${p.devise}</span></td>
+    <td class="mono">${fmtM(p.solde_actuel,'')}</td>
+    <td><button class="btn btn-secondary btn-sm" onclick="saAjusterSolde('${p.utilisateur_id}','${p.devise}',${p.solde_actuel},'portf','${p.nom||p.devise}')">Ajuster</button></td>
+  </tr>`;}).join('')||'<tr><td colspan="5" class="empty-state">Aucun</td></tr>';
+  const mobRows=cacheMob.map(m=>{const u=(users||[]).find(x=>x.id===m.utilisateur_id);return `<tr>
+    <td>${u?.nom||'\u2014'}</td><td><span class="badge badge-purple">${m.plateforme}</span></td><td>${m.devise}</td>
+    <td class="mono">${fmtM(m.solde_actuel,'')}</td>
+    <td><button class="btn btn-secondary btn-sm" onclick="saAjusterSolde('${m.utilisateur_id}','${m.id}',${m.solde_actuel},'mob','${m.plateforme}')">Ajuster</button></td>
+  </tr>`;}).join('')||'<tr><td colspan="5" class="empty-state">Aucun</td></tr>';
+  const usersOpts=(users||[]).map(u=>`<option value="${u.id}">${u.nom} (${u.role})</option>`).join('');
+  const agentsOpts=(users||[]).filter(u=>u.role==='agent').map(u=>`<option value="${u.id}">${u.nom}</option>`).join('');
+  el.innerHTML=`<div class="page-header"><div class="page-title">Configuration</div></div>
+  <div class="page-content">
+    <!-- Ajouter utilisateur & portefeuille -->
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:20px">
+      <div class="card"><div class="card-title">Ajouter un portefeuille</div>
+        <div class="form-group"><label>Utilisateur</label><select id="sa-portf-user"><option value="">--</option>${usersOpts}</select></div>
+        <div class="form-group" style="margin-top:10px"><label>Nom (optionnel)</label><input type="text" id="sa-portf-nom" placeholder="Ex: Caisse principale"></div>
+        <div class="form-grid" style="margin-top:10px">
+          <div class="form-group"><label>Devise</label><select id="sa-portf-devise">${DEVISES.map(d=>`<option value="${d}">${d}</option>`).join('')}</select></div>
+          <div class="form-group"><label>Solde initial</label><input type="number" id="sa-portf-solde" placeholder="0" step="0.01"></div>
+        </div>
+        <button class="btn btn-primary btn-sm" style="margin-top:12px" onclick="saAddPortf()">Ajouter</button>
+      </div>
+      <div class="card"><div class="card-title">Ajouter un compte Mobile Money</div>
+        <div class="form-group"><label>Agent</label><select id="sa-mob-user"><option value="">--</option>${agentsOpts}</select></div>
+        <div class="form-grid" style="margin-top:10px">
+          <div class="form-group"><label>Plateforme</label><input type="text" id="sa-mob-plat" placeholder="M-Pesa, Lumicash\u2026"></div>
+          <div class="form-group"><label>Num\u00e9ro</label><input type="text" id="sa-mob-num" placeholder="+257\u2026"></div>
+        </div>
+        <div class="form-grid" style="margin-top:10px">
+          <div class="form-group"><label>Devise</label><select id="sa-mob-devise">${DEVISES.map(d=>`<option value="${d}"${d==='BIF'?' selected':''}>${d}</option>`).join('')}</select></div>
+          <div class="form-group"><label>Solde initial</label><input type="number" id="sa-mob-solde" placeholder="0" step="0.01"></div>
+        </div>
+        <button class="btn btn-primary btn-sm" style="margin-top:12px" onclick="saAddMob()">Ajouter</button>
+      </div>
+    </div>
+    <div class="card mt-4"><div class="card-title">Portefeuilles</div>
+    <div class="table-wrap" style="border:none"><table><thead><tr><th>Utilisateur</th><th>Nom</th><th>Devise</th><th>Solde</th><th></th></tr></thead><tbody>${portfRows}</tbody></table></div></div>
+    <div class="card mt-4"><div class="card-title">Comptes Mobile Money</div>
+    <div class="table-wrap" style="border:none"><table><thead><tr><th>Utilisateur</th><th>Plateforme</th><th>Devise</th><th>Solde</th><th></th></tr></thead><tbody>${mobRows}</tbody></table></div></div>
+    <div class="card mt-4"><div class="card-title">Devises disponibles</div>
+      <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px">${DEVISES.map(d=>`<span class="badge badge-gray">${d}</span>`).join('')}</div>
+      <div class="form-grid"><div class="form-group"><label>Code</label><input type="text" id="sa-devise-code" placeholder="Ex: MAD" maxlength="5" style="text-transform:uppercase"></div>
+      <div class="form-group"><label>Nom (optionnel)</label><input type="text" id="sa-devise-nom" placeholder="Ex: Dirham marocain"></div></div>
+      <button class="btn btn-secondary btn-sm" style="margin-top:10px" onclick="saAddDevise()">Ajouter la devise</button>
+    </div>
+  </div>`;
+}
+
+async function saAjusterSolde(uid,compteRef,soldeActuel,type,nom){
+  const motif=prompt(`Motif de l'ajustement (obligatoire) :\nCompte : ${nom} — Solde actuel : ${fmtM(soldeActuel,'')}`);
+  if(!motif?.trim()){alert('Motif obligatoire.');return;}
+  const nvStr=prompt(`Nouveau solde pour ${nom} (actuel : ${fmtM(soldeActuel,'')}) :`);
+  if(nvStr===null)return;const nv=parseFloat(nvStr);if(isNaN(nv)){alert('Valeur invalide');return;}
+  // Appliquer l'ajustement
+  if(type==='portf'){await sb.from('comptes_portefeuille').update({solde_actuel:nv,mis_a_jour_le:new Date().toISOString()}).eq('utilisateur_id',uid).eq('devise',compteRef);}
+  else{await sb.from('comptes_mobile_money').update({solde_actuel:nv}).eq('id',compteRef);}
+  // Journaliser
+  await sb.from('ajustements_solde').insert({fait_par:currentUser.id,utilisateur_id:uid,compte_type:type,compte_ref:type==='portf'?compteRef:nom,ancien_solde:soldeActuel,nouveau_solde:nv,motif:motif.trim()});
+  await chargerCaches();alert(`\u2713 Solde ajust\u00e9 : ${fmtM(soldeActuel,'')} \u2192 ${fmtM(nv,'')}`);renderSaConfiguration();
+}
+async function saAddPortf(){
+  const uid=document.getElementById('sa-portf-user')?.value;const devise=document.getElementById('sa-portf-devise')?.value;
+  const nom=document.getElementById('sa-portf-nom')?.value||null;const fl=parseFloat(document.getElementById('sa-portf-solde')?.value)||0;
+  if(!uid){alert('Choisissez un utilisateur');return;}
+  await sb.from('comptes_portefeuille').upsert({utilisateur_id:uid,devise,solde_actuel:fl,float_initial:fl,nom:nom||undefined},{onConflict:'utilisateur_id,devise'});
+  const user=(await sb.from('utilisateurs').select('role').eq('id',uid).single()).data;
+  if(user?.role==='agent'){
+    const {data:ex}=await sb.from('comptes_mobile_money').select('plateforme').eq('utilisateur_id',uid);
+    const plats=(ex||[]).map(e=>e.plateforme.toLowerCase());
+    if(!plats.includes('inoti')) await sb.from('comptes_mobile_money').insert({utilisateur_id:uid,plateforme:'Inoti',numero:'A configurer',devise:'BIF',solde_actuel:0});
+    if(!plats.includes('lumicash')) await sb.from('comptes_mobile_money').insert({utilisateur_id:uid,plateforme:'Lumicash',numero:'A configurer',devise:'BIF',solde_actuel:0});
+  }
+  await chargerCaches();alert('\u2713 Portefeuille ajout\u00e9 !');renderSaConfiguration();
+}
+async function saAddMob(){
+  const uid=document.getElementById('sa-mob-user')?.value,plat=document.getElementById('sa-mob-plat')?.value;
+  const num=document.getElementById('sa-mob-num')?.value,devise=document.getElementById('sa-mob-devise')?.value;
+  const solde=parseFloat(document.getElementById('sa-mob-solde')?.value)||0;
+  if(!uid||!plat||!num){alert('Remplissez tous les champs');return;}
+  await sb.from('comptes_mobile_money').insert({utilisateur_id:uid,plateforme:plat,numero:num,devise,solde_actuel:solde});
+  await chargerCaches();alert('\u2713 Compte ajout\u00e9 !');renderSaConfiguration();
+}
+async function saAddDevise(){
+  const code=(document.getElementById('sa-devise-code')?.value||'').toUpperCase().trim();
+  const nom=document.getElementById('sa-devise-nom')?.value||null;
+  if(!code||code.length<2){alert('Code devise invalide');return;}
+  if(DEVISES.includes(code)){alert('Cette devise existe d\u00e9j\u00e0');return;}
+  await sb.from('devises_custom').upsert({code,nom,cree_par:currentUser.id},{onConflict:'code'});
+  DEVISES.push(code);alert('\u2713 Devise '+code+' ajout\u00e9e');renderSaConfiguration();
+}
+
+// === PAGE SUPERVISION (superadmin) ===
+async function renderSaSupervision(){
+  if(currentUser.role!=='superadmin')return;
+  const el=document.getElementById('page-sa-supervision');
+  el.innerHTML='<div class="page-content"><div class="loading">Chargement\u2026</div></div>';
+  const [{data:conns},{data:ajusts}]=await Promise.all([
+    sb.from('connexions').select('*,utilisateurs(nom,role)').order('cree_le',{ascending:false}).limit(100),
+    sb.from('ajustements_solde').select('*,auteur:utilisateurs!ajustements_solde_fait_par_fkey(nom),cible:utilisateurs!ajustements_solde_utilisateur_id_fkey(nom)').order('cree_le',{ascending:false}).limit(100)
+  ]);
+  const connsH=(conns||[]).map(c=>`<tr>
+    <td style="font-size:11px;color:var(--text2);white-space:nowrap">${fmtD(c.cree_le)}</td>
+    <td style="font-weight:500">${c.utilisateurs?.nom||'\u2014'}</td>
+    <td><span class="badge badge-${c.utilisateurs?.role==='admin'?'blue':c.utilisateurs?.role==='superadmin'?'amber':'purple'}">${c.utilisateurs?.role||'\u2014'}</span></td>
+    <td style="font-size:11px;color:var(--text3)">${(c.navigateur||'\u2014').substring(0,60)}</td>
+  </tr>`).join('')||'<tr><td colspan="4" class="empty-state">Aucune connexion enregistr\u00e9e</td></tr>';
+  const ajustsH=(ajusts||[]).map(a=>`<tr>
+    <td style="font-size:11px;color:var(--text2);white-space:nowrap">${fmtD(a.cree_le)}</td>
+    <td>${a.auteur?.nom||'\u2014'}</td>
+    <td>${a.cible?.nom||'\u2014'}</td>
+    <td class="badge badge-gray">${a.compte_ref}</td>
+    <td class="mono">${fmtM(a.ancien_solde,'')} \u2192 ${fmtM(a.nouveau_solde,'')}</td>
+    <td style="font-size:12px;color:var(--text2)">${a.motif}</td>
+  </tr>`).join('')||'<tr><td colspan="6" class="empty-state">Aucun ajustement enregistr\u00e9</td></tr>';
+  el.innerHTML=`<div class="page-header"><div class="page-title">Supervision</div><div class="page-sub">Journal des acc\u00e8s et modifications</div></div>
+  <div class="page-content">
+    <div class="card" style="margin-bottom:20px"><div class="card-title">\uD83D\uDD11 Historique des connexions (100 derni\u00e8res)</div>
+    <div class="table-wrap" style="border:none"><table><thead><tr><th>Date</th><th>Utilisateur</th><th>R\u00f4le</th><th>Navigateur</th></tr></thead><tbody>${connsH}</tbody></table></div></div>
+    <div class="card"><div class="card-title">\uD83D\uDCCA Journal des ajustements de soldes (100 derniers)</div>
+    <div class="table-wrap" style="border:none"><table><thead><tr><th>Date</th><th>Par</th><th>Compte de</th><th>R\u00e9f\u00e9rence</th><th>Solde</th><th>Motif</th></tr></thead><tbody>${ajustsH}</tbody></table></div></div>
+  </div>`;
+}
+
 initApp();
 setInterval(async()=>{if(currentUser) await refreshNotifBadge();},30000);
+// Vérification compte actif toutes les 60s (kick si désactivé par superadmin)
+setInterval(async()=>{
+  if(!currentUser)return;
+  const {data}=await sb.from('utilisateurs').select('actif').eq('id',currentUser.id).single();
+  if(data&&!data.actif){alert('Votre compte a \u00e9t\u00e9 d\u00e9sactiv\u00e9. Vous allez \u00eatre d\u00e9connect\u00e9.');doLogout();}
+},60000);
 
 // === DÉTECTION MOBILE ===
 const isMobile=()=>window.innerWidth<=768;
@@ -1923,23 +2119,29 @@ renderNouvelleOp=function(){
       <div class="drawer-user-name" id="drawer-username">—</div>
       <div class="drawer-user-role" id="drawer-role">—</div>
     </div>
-    <div class="drawer-item" onclick="drawerNav('soldes')">
+    <div class="drawer-item nav-financial" onclick="drawerNav('soldes')">
       <span class="drawer-item-icon">&#9678;</span> Soldes &eacute;quipe
     </div>
-    <div class="drawer-item" onclick="drawerNav('taux')">
+    <div class="drawer-item nav-financial" onclick="drawerNav('taux')">
       <span class="drawer-item-icon">&#8644;</span> Taux de change
     </div>
-    <div class="drawer-item" onclick="drawerNav('cloture')">
+    <div class="drawer-item nav-financial" onclick="drawerNav('cloture')">
       <span class="drawer-item-icon">&#10003;</span> Cl&ocirc;ture du jour
+    </div>
+    <div class="drawer-item nav-superadmin-only" onclick="drawerNav('sa-utilisateurs')">
+      <span class="drawer-item-icon">&#128101;</span> Utilisateurs
+    </div>
+    <div class="drawer-item nav-superadmin-only" onclick="drawerNav('sa-configuration')">
+      <span class="drawer-item-icon">&#9881;</span> Configuration
+    </div>
+    <div class="drawer-item nav-superadmin-only" onclick="drawerNav('sa-supervision')">
+      <span class="drawer-item-icon">&#128065;</span> Supervision
     </div>
     <div class="drawer-item" onclick="drawerNav('mon-mdp')">
       <span class="drawer-item-icon">&#128273;</span> Mon mot de passe
     </div>
     <div class="drawer-item nav-admin-only" onclick="drawerNav('rapports')">
       <span class="drawer-item-icon">R</span> Rapports
-    </div>
-    <div class="drawer-item nav-admin-only" onclick="drawerNav('admin')">
-      <span class="drawer-item-icon">&#9881;</span> Administration
     </div>
     <div class="drawer-sep"></div>
     <div class="drawer-item drawer-logout" onclick="doLogout();closeDrawer()">
