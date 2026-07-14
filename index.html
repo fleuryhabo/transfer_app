@@ -28,7 +28,6 @@ body{font-family:var(--sans);background:var(--bg);color:var(--text);min-height:1
 /* ===== DESKTOP uniquement ===== */
 @media(min-width:769px){
   #sidebar{display:flex;}
-  #bottom-nav{display:none;}
   #drawer-overlay{display:none!important;}
   .fab{display:none;}
 }
@@ -36,6 +35,8 @@ body{font-family:var(--sans);background:var(--bg);color:var(--text);min-height:1
 @media(max-width:768px){
   /* Cacher sidebar desktop */
   #sidebar{display:none!important;}
+  /* Afficher la barre de navigation mobile */
+  #bottom-nav{display:flex;}
   /* Main prend tout l'écran avec espace pour la barre du bas */
   #main{margin-left:0;padding-bottom:var(--bottom-nav-h);}
   /* Page header compact */
@@ -171,7 +172,8 @@ tr:hover td{background:rgba(79,142,247,.03);}
 #bottom-nav{
   position:fixed;bottom:0;left:0;right:0;height:var(--bottom-nav-h);
   background:var(--bg2);border-top:1px solid var(--border);
-  display:flex;align-items:stretch;z-index:50;
+  display:none;/* Masqué par défaut — affiché seulement sur mobile via media query */
+  align-items:stretch;z-index:50;
   padding-bottom:env(safe-area-inset-bottom);
 }
 .bnav-item{
