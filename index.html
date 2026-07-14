@@ -575,6 +575,15 @@ async function renderDashboard(){
   if(currentUser.role==='agent'){
     const {data:pending}=await sb.from('notifications').select('id,operation_id').eq('destinataire_id',currentUser.id).eq('type','envoi_a_confirmer').eq('lue',false);
     if(pending?.length) alertes+=`<div class="alert alert-info" style="cursor:pointer" onclick="showPage('notifications')">&#128276; ${pending.length} envoi(s) \u00e0 confirmer \u2014 cliquez ici</div>`;
+    // Argent reçus différés en attente de confirmation par l'agent lui-même
+    const {data:arDifferes}=await sb.from('operations').select('*').eq('auteur_id',currentUser.id).eq('type_operation','argent_recu').eq('statut_confirmation','en_attente').eq('annulee',false);
+    if(arDifferes?.length){
+      const arItems=arDifferes.map(ar=>`<span style="display:inline-flex;align-items:center;gap:8px;margin-right:12px">
+        <strong>${ar.nom_client||'Client'}</strong> ${fmtM(ar.montant,ar.devise_source)}
+        <button class="btn btn-primary btn-sm" onclick="openConfirmation('${ar.id}')">Confirmer r\u00e9ception</button>
+      </span>`).join('');
+      alertes+=`<div class="alert alert-warn">\u23f3 ${arDifferes.length} argent(s) re\u00e7u(s) en attente de confirmation\u00a0: ${arItems}</div>`;
+    }
     const {data:distPending}=await sb.from('operations').select('id').eq('auteur_id',currentUser.id).eq('type_operation','distribution_beneficiaire').eq('statut_confirmation','en_attente').eq('annulee',false);
     if(distPending?.length) alertes+=`<div class="alert alert-warn">&#8987; ${distPending.length} distribution(s) en attente de couverture par un administrateur.</div>`;
   }
@@ -662,7 +671,15 @@ function updateDepenseSource(){
   valEl.className='solde-dispo-val';
 }
 
-// Transfert entre agents : solde source
+// Toggle immédiat/différé pour argent_recu agent
+function updateModeReception(){
+  const mode=document.getElementById('f-mode-reception')?.value;
+  const commBloc=document.getElementById('comm-recu-bloc');
+  const destBloc=document.getElementById('dest-recep-bloc');
+  const isDiff=mode==='differe';
+  if(commBloc) commBloc.style.display=isDiff?'none':'block';
+  if(destBloc) destBloc.style.display=isDiff?'none':'block';
+}
 function updateTbaSrc(){
   const val=document.getElementById('f-tba-src')?.value;
   const box=document.getElementById('tba-src-solde'),valEl=document.getElementById('tba-src-solde-val');
@@ -731,6 +748,20 @@ async function initFormAsync(type){
 
   // Distributions en attente pour envoi admin
   if(type==='envoi_employe') await chargerDistribEnAttente();
+
+  // Argent reçus différés pour lien depuis distribution
+  if(type==='distribution_beneficiaire' && currentUser.role==='agent'){
+    const {data:arPending}=await sb.from('operations')
+      .select('*').eq('auteur_id',currentUser.id)
+      .eq('type_operation','argent_recu').eq('statut_confirmation','en_attente').eq('annulee',false);
+    const bloc=document.getElementById('ar-attente-bloc');
+    const sel=document.getElementById('f-ar-lien');
+    if(bloc&&sel&&arPending?.length){
+      bloc.style.display='block';
+      sel.innerHTML='<option value="">-- Ne pas lier (flux admin standard) --</option>'
+        +arPending.map(ar=>`<option value="${ar.id}">${ar.nom_client||'Client'} \u2014 ${fmtM(ar.montant,ar.devise_source)} \u2014 ${fmtD(ar.cree_le)}</option>`).join('');
+    }
+  }
 
   // Init solde affiché
   updateSoldeAffiche();
@@ -861,16 +892,36 @@ function buildForm(type){
 
   // ---- Formulaires par type ----
   const forms={
-    // ADMIN : reçoit et choisit où aller, pas de devise cible
-    // AGENT : reçoit, choisit destination ET saisit commission
+    // ADMIN : reçoit et choisit où aller
+    // AGENT : toggle immédiat (commission sur-le-champ) ou différé (confirmation ultérieure)
     argent_recu: currentUser.role==='admin'
       ?`<div class="form-grid">${portfSelSimple}${montantChamp}</div>${client}${destinationSel}${notes}`
-      :`<div class="form-grid">${portfSelSimple}${montantChamp}</div>${client}${destinationSel}${commRecu}${notes}`,
+      :`<div class="form-group"><label>Mode de réception *</label>
+          <select id="f-mode-reception" onchange="updateModeReception()">
+            <option value="immediat">Fonds disponibles immédiatement — je les ai en main</option>
+            <option value="differe">Traitement différé — je n'ai pas encore les fonds</option>
+          </select>
+          <span class="form-hint">Choisissez "différé" si vous devez d'abord distribuer avant de recevoir les fonds réels</span>
+        </div>
+        <div class="form-grid" style="margin-top:10px">${portfSelSimple}${montantChamp}</div>
+        ${client}
+        <div id="dest-recep-bloc">${destinationSel}</div>
+        <div id="comm-recu-bloc">${commRecu}</div>
+        ${notes}`,
 
     envoi_employe:`<div class="form-grid">${portfSel}${montantChamp}</div>${soldeDispo}${agentSel}${natureEnvoi}${distribAttente}${notes}`,
 
-    // Distribution avec frais
-    distribution_beneficiaire:`${sourceSel}${benef}${adminAssigne}${commMob}${fraisChamp}${notes}`,
+    // Distribution avec frais + lien optionnel vers argent_recu différé
+    distribution_beneficiaire:`${sourceSel}${benef}${adminAssigne}
+      <div id="ar-attente-bloc" style="display:none;margin-top:10px">
+        <div class="form-group"><label>Lier à un argent reçu en attente (optionnel)</label>
+          <select id="f-ar-lien">
+            <option value="">-- Ne pas lier (flux admin standard) --</option>
+          </select>
+          <span class="form-hint">Si ce paiement correspond à un argent reçu différé, sélectionnez-le pour lier les deux opérations</span>
+        </div>
+      </div>
+      ${commMob}${fraisChamp}${notes}`,
 
     // Mobile money avec frais
     mobile_money_entrant:`<div class="form-grid">${portfSelSimple}${montantChamp}</div>${mobileSel}${commMob}${fraisChamp}${notes}`,
@@ -1136,6 +1187,12 @@ async function submitOperation(){
   btn.disabled=true;btn.textContent='Enregistrement\u2026';
   try{
 
+  // Mode réception agent : immédiat ou différé
+  const modeReception=document.getElementById('f-mode-reception')?.value||'immediat';
+  const isDeferred=(type==='argent_recu'&&currentUser.role==='agent'&&modeReception==='differe');
+  // Lien distribution → argent_recu différé
+  const arLienId=document.getElementById('f-ar-lien')?.value||null;
+
   // ── RÉSOLUTION PROPRE (sans clés dupliquées) ──────────────
 
   // 1. DÉPENSE : identifier le compte source
@@ -1201,9 +1258,11 @@ async function submitOperation(){
 
   // FIX DOUBLE CRÉDIT : pour argent_recu avec destination,
   // les impacts RÉELS sont ceux de la destination (pas le portf source)
-  // Cela garantit aussi que impacts_json est correct pour l'annulation
+  // Mode différé agent : aucun impact immédiat (crédité à la confirmation)
   let impacts;
-  if(type==='argent_recu'&&destRecepType){
+  if(isDeferred){
+    impacts=[]; // Fonds crédités seulement quand l'agent confirme avoir reçu
+  } else if(type==='argent_recu'&&destRecepType){
     impacts=[];
     if(destRecepType==='portf') impacts.push({type:'portf',userId:currentUser.id,devise:destRecepDevise,delta:montant});
     else if(destRecepType==='mob'&&destRecepCompte) impacts.push({type:'mob',compteId:destRecepCompte,delta:montant});
@@ -1226,7 +1285,7 @@ async function submitOperation(){
     admin_assigne_id:adminAssigneId||null,
     source_type:sourceType||(type==='distribution_beneficiaire'?'portefeuille':null),
     source_compte_id:sourceType==='mobile_money'?sourceCompteId:null,
-    statut_confirmation:type==='distribution_beneficiaire'?'en_attente':null,
+    statut_confirmation:(type==='distribution_beneficiaire'||isDeferred)?'en_attente':null,
     commission_compte_id:mobUuid(commCompteId)  // null pour portf, UUID pour mob
   };
 
@@ -1237,8 +1296,9 @@ async function submitOperation(){
     await sb.from('taux_change').insert({saisi_par:currentUser.id,devise_de:devise,devise_vers:devise_cible,taux:taux_change});
   await appliquerImpacts(impacts);
 
-  // Commission argent_recu AGENT : montant net (brut - frais), avec destination choisie
-  if(commBrute>0&&type==='argent_recu'&&currentUser.role==='agent'){
+  // Commission argent_recu AGENT : seulement en mode immédiat
+  // (en mode différé, la commission est calculée à la confirmation)
+  if(!isDeferred&&commBrute>0&&type==='argent_recu'&&currentUser.role==='agent'){
     // Alerte si commission nette négative
     if(commNette<0){
       const ok=confirm('La commission nette est négative ('+fmtM(commNette,devise)+').'
@@ -1287,7 +1347,12 @@ async function submitOperation(){
     await appliquerImpacts(cImpact);
   }
 
-  // Liaison distributions → envoi + notification agent (transit uniquement)
+  // Distribution liée à un argent_recu différé de l'agent
+  if(type==='distribution_beneficiaire'&&arLienId&&inserted){
+    await sb.from('envoi_distributions').insert({envoi_id:arLienId,distribution_id:inserted.id});
+  }
+
+  // Liaison distributions → envoi + notification agent (transit admin uniquement)
   if(type==='envoi_employe'&&natureEnvoi==='transit'&&inserted&&agentId){
     const checks=document.querySelectorAll('input[name="distrib-select"]:checked');
     const distribIds=[...checks].map(c=>c.value);
@@ -1324,42 +1389,47 @@ async function submitOperation(){
 function closeConfirm(){document.getElementById('confirm-overlay').style.display='none';currentConfirmEnvoi=null;}
 async function openConfirmation(envoiId){
   const {data:envoi}=await sb.from('operations').select('*').eq('id',envoiId).single();
-  if(!envoi){alert('Op\u00e9ration introuvable');return;}
-  // GARDE : empêcher la double confirmation
+  if(!envoi){alert('Opération introuvable');return;}
   if(envoi.statut_confirmation==='confirme'){
     alert('ℹ Cette réception a déjà été confirmée.');
     await sb.from('notifications').update({lue:true}).eq('operation_id',envoiId).eq('destinataire_id',currentUser.id).eq('type','envoi_a_confirmer');
     await refreshNotifBadge();return;
   }
-  if(envoi.annulee){alert('⚠ Cet envoi a été annulé.');return;}
+  if(envoi.annulee){alert('⚠ Cette opération a été annulée.');return;}
   const {data:liens}=await sb.from('envoi_distributions').select('distribution_id').eq('envoi_id',envoiId);
   const distribIds=(liens||[]).map(l=>l.distribution_id);
   let distribs=[];
   if(distribIds.length){const {data}=await sb.from('operations').select('*').in('id',distribIds);distribs=data||[];}
   const totalDistrib=distribs.reduce((s,d)=>s+parseFloat(d.montant),0);
-  currentConfirmEnvoi={envoi,distribs,totalDistrib};
+  const isSelfConfirm=envoi.type_operation==='argent_recu';
+  currentConfirmEnvoi={envoi,distribs,totalDistrib,isSelfConfirm};
   const mesMob=cacheMob.filter(m=>m.utilisateur_id===currentUser.id);
   const mesPortf=cachePortf.filter(p=>p.utilisateur_id===currentUser.id);
   const distribList=distribs.map(d=>`<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border)">
-    <span>${d.nom_beneficiaire||'B\u00e9n\u00e9ficiaire'}</span><span class="mono text-muted">${fmtM(d.montant,d.devise_source)}</span></div>`).join('');
+    <span>${d.nom_beneficiaire||'Bénéficiaire'}</span><span class="mono text-muted">${fmtM(d.montant,d.devise_source)}</span></div>`).join('');
+  const distribSection=distribs.length
+    ?`<div class="card" style="margin-bottom:14px"><div class="card-title">Distributions liées (${distribs.length})</div>
+      ${distribList}
+      <div style="display:flex;justify-content:space-between;padding:8px 0;font-weight:500"><span>Total distribué</span><span class="mono">${fmtM(totalDistrib,distribs[0]?.devise_source||'')}</span></div></div>`
+    :`<div class="alert alert-warn" style="margin-bottom:14px">Aucune distribution liée — la commission sera égale au montant reçu.</div>`;
   const destOpts=`<option value="">-- Choisir --</option>
-    <optgroup label="Portefeuilles physiques">${mesPortf.map(p=>`<option value="portf_${p.devise}">Portefeuille ${p.devise} (solde\u00a0: ${fmtM(p.solde_actuel,'')})</option>`).join('')}</optgroup>
-    <optgroup label="Comptes Mobile Money">${mesMob.map(m=>`<option value="mob_${m.id}">${m.plateforme} (${m.devise}) \u2014 solde\u00a0: ${fmtM(m.solde_actuel,'')}</option>`).join('')}</optgroup>`;
-  document.getElementById('confirm-body').innerHTML=`
-    <div class="alert alert-info">Envoi de <strong>${userName(envoi.auteur_id)}</strong> \u2014 <span class="mono">${fmtM(envoi.montant,envoi.devise_source)}</span></div>
-    <div class="card" style="margin-bottom:14px"><div class="card-title">Distributions couvertes (${distribs.length})</div>
-    ${distribList}
-    <div style="display:flex;justify-content:space-between;padding:8px 0;font-weight:500"><span>Total distribu\u00e9</span><span class="mono">${fmtM(totalDistrib,distribs[0]?.devise_source||'')}</span></div></div>
+    <optgroup label="Portefeuilles physiques">${mesPortf.map(p=>`<option value="portf_${p.devise}">Portefeuille ${p.devise} (solde : ${fmtM(p.solde_actuel,'')})</option>`).join('')}</optgroup>
+    <optgroup label="Comptes Mobile Money">${mesMob.map(m=>`<option value="mob_${m.id}">${m.plateforme} (${m.devise}) — solde : ${fmtM(m.solde_actuel,'')}</option>`).join('')}</optgroup>`;
+  const header=isSelfConfirm
+    ?`<div class="alert alert-info">Argent reçu de <strong>${envoi.nom_client||'client'}</strong> — <span class="mono">${fmtM(envoi.montant,envoi.devise_source)}</span> <span class="badge badge-amber" style="margin-left:8px">Auto-confirmation</span></div>`
+    :`<div class="alert alert-info">Envoi de <strong>${userName(envoi.auteur_id)}</strong> — <span class="mono">${fmtM(envoi.montant,envoi.devise_source)}</span></div>`;
+  document.getElementById('confirm-body').innerHTML=`${header}
+    ${distribSection}
     <div class="form-grid">
-      <div class="form-group"><label>Montant r\u00e9ellement re\u00e7u *</label><input type="number" id="cf-montant" placeholder="0.00" step="0.01" oninput="updateCommCalc()"></div>
-      <div class="form-group"><label>Devise re\u00e7ue *</label><select id="cf-devise">${devisesOpts('BIF')}</select></div>
+      <div class="form-group"><label>Montant réellement reçu *</label><input type="number" id="cf-montant" placeholder="0.00" step="0.01" oninput="updateCommCalc()"></div>
+      <div class="form-group"><label>Devise reçue *</label><select id="cf-devise">${devisesOpts('BIF')}</select></div>
     </div>
-    <div id="comm-calc-box" class="impact-box" style="display:none;margin-top:14px"><div class="impact-title">Commission calcul\u00e9e automatiquement</div><div id="comm-calc-detail"></div></div>
+    <div id="comm-calc-box" class="impact-box" style="display:none;margin-top:14px"><div class="impact-title">Commission calculée automatiquement</div><div id="comm-calc-detail"></div></div>
     <div class="form-grid" style="margin-top:14px">
-      <div class="form-group"><label>Commission valid\u00e9e *</label><input type="number" id="cf-commission" placeholder="0.00" step="0.01"><span class="form-hint">Ajustez si n\u00e9cessaire</span></div>
-      <div class="form-group"><label>Motif d'\u00e9cart</label><input type="text" id="cf-motif" placeholder="Optionnel si pas d'\u00e9cart"></div>
+      <div class="form-group"><label>Commission validée *</label><input type="number" id="cf-commission" placeholder="0.00" step="0.01"><span class="form-hint">Ajustez si nécessaire</span></div>
+      <div class="form-group"><label>Motif d'écart</label><input type="text" id="cf-motif" placeholder="Optionnel si pas d'écart"></div>
     </div>
-    <div class="form-group" style="margin-top:14px"><label>O\u00f9 enregistrer les fonds re\u00e7us *</label><select id="cf-destination">${destOpts}</select></div>`;
+    <div class="form-group" style="margin-top:14px"><label>Où enregistrer les fonds reçus *</label><select id="cf-destination">${destOpts}</select></div>`;
   document.getElementById('confirm-overlay').style.display='flex';
 }
 function updateCommCalc(){
@@ -1370,8 +1440,8 @@ function updateCommCalc(){
   const total=currentConfirmEnvoi.totalDistrib;
   const comm=recu-total;
   if(box)box.style.display='block';
-  if(det)det.innerHTML=`<div class="impact-row"><span class="name">Montant re\u00e7u</span><span class="pos">${fmtM(recu,'')}</span></div>
-    <div class="impact-row"><span class="name">Total distribu\u00e9</span><span class="neg">-${fmtM(total,'')}</span></div>
+  if(det)det.innerHTML=`<div class="impact-row"><span class="name">Montant reçu</span><span class="pos">${fmtM(recu,'')}</span></div>
+    <div class="impact-row"><span class="name">Total distribué</span><span class="neg">-${fmtM(total,'')}</span></div>
     <div class="impact-row" style="border-top:1px solid var(--border);padding-top:6px"><span class="name" style="font-weight:500">Commission</span>
     <span style="font-weight:600;color:${comm>=0?'var(--green)':'var(--red)'};font-family:var(--mono)">${fmtM(comm,'')}</span></div>`;
   const cf=document.getElementById('cf-commission');if(cf)cf.value=Math.max(0,comm).toFixed(2);
@@ -1383,41 +1453,42 @@ async function submitConfirmation(){
   const commValidee=parseFloat(document.getElementById('cf-commission')?.value)||0;
   const motif=document.getElementById('cf-motif')?.value||null;
   const dest=document.getElementById('cf-destination')?.value;
-  if(!recu||recu<=0){alert('Entrez le montant re\u00e7u');return;}
+  if(!recu||recu<=0){alert('Entrez le montant reçu');return;}
   if(!dest){alert('Choisissez la destination des fonds');return;}
-  const {envoi,distribs,totalDistrib}=currentConfirmEnvoi;
+  const {envoi,distribs,totalDistrib,isSelfConfirm}=currentConfirmEnvoi;
   const commCalc=recu-totalDistrib;
-  // Destination
   let impacts=[];
-  if(dest.startsWith('portf_')){
-    const dev=dest.replace('portf_','');
-    impacts.push({type:'portf',userId:currentUser.id,devise:dev,delta:recu});
-  } else if(dest.startsWith('mob_')){
-    const cid=dest.replace('mob_','');
-    impacts.push({type:'mob',compteId:cid,delta:recu});
-  }
+  if(dest.startsWith('portf_')){impacts.push({type:'portf',userId:currentUser.id,devise:dest.replace('portf_',''),delta:recu});}
+  else if(dest.startsWith('mob_')){impacts.push({type:'mob',compteId:dest.replace('mob_',''),delta:recu});}
   await appliquerImpacts(impacts);
-  // Commission sur le portefeuille physique (BIF généralement) — lien vers l'envoi
   if(commValidee>0){
     const cImpact=calculerImpacts('commission_transfert',{auteurId:currentUser.id,montant:commValidee,devise});
+    const noteComm=isSelfConfirm
+      ?`Commission transfert — client ${envoi.nom_client||''}`
+      :`Commission transfert — envoi de ${userName(envoi.auteur_id)}`;
     await sb.from('operations').insert({
       auteur_id:currentUser.id,type_operation:'commission_transfert',montant:commValidee,
       devise_source:devise,annulee:false,impacts_json:JSON.stringify(cImpact),
-      notes:`Commission transfert \u2014 envoi de ${userName(envoi.auteur_id)}`,
-      lien_op_id:envoi.id,  // lien vers l'envoi admin
-      commission_nette:commValidee
+      notes:noteComm,lien_op_id:envoi.id,commission_nette:commValidee
     });
     await appliquerImpacts(cImpact);
   }
-  // Mettre à jour l'envoi et les distributions
-  await sb.from('operations').update({statut_confirmation:'confirme',montant_recu_confirmation:recu,devise_confirmation:devise,commission_calculee:commCalc,commission_validee:commValidee,motif_ecart_commission:motif}).eq('id',envoi.id);
+  await sb.from('operations').update({
+    statut_confirmation:'confirme',montant_recu_confirmation:recu,
+    devise_confirmation:devise,commission_calculee:commCalc,
+    commission_validee:commValidee,motif_ecart_commission:motif
+  }).eq('id',envoi.id);
   for(const d of distribs) await sb.from('operations').update({statut_confirmation:'confirme'}).eq('id',d.id);
-  // Notifier l'admin
-  await sb.from('notifications').insert({destinataire_id:envoi.auteur_id,type:'confirmation_recue',lue:false,operation_id:envoi.id,titre:`Confirmation de ${currentUser.nom}`,message:`Re\u00e7u\u00a0: ${fmtM(recu,devise)} \u2014 Commission\u00a0: ${fmtM(commValidee,devise)}`});
-  // Marquer la notif envoi_a_confirmer comme lue
-  await sb.from('notifications').update({lue:true}).eq('operation_id',envoi.id).eq('destinataire_id',currentUser.id).eq('type','envoi_a_confirmer');
+  if(!isSelfConfirm){
+    await sb.from('notifications').insert({
+      destinataire_id:envoi.auteur_id,type:'confirmation_recue',lue:false,operation_id:envoi.id,
+      titre:`Confirmation de ${currentUser.nom}`,
+      message:`Reçu : ${fmtM(recu,devise)} — Commission : ${fmtM(commValidee,devise)}`
+    });
+    await sb.from('notifications').update({lue:true}).eq('operation_id',envoi.id).eq('destinataire_id',currentUser.id).eq('type','envoi_a_confirmer');
+  }
   await chargerCaches();closeConfirm();
-  alert('\u2713 R\u00e9ception confirm\u00e9e et soldes mis \u00e0 jour\u00a0!');showPage('dashboard');
+  alert('✓ Réception confirmée et soldes mis à jour !');showPage('dashboard');
 }
 
 // === HISTORIQUE ===
