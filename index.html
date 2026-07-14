@@ -680,6 +680,12 @@ function updateModeReception(){
   if(commBloc) commBloc.style.display=isDiff?'none':'block';
   if(destBloc) destBloc.style.display=isDiff?'none':'block';
 }
+// Afficher/masquer le sélecteur AR selon le choix admin/moi-même
+function updateAdminAssigneUI(){
+  const val=document.getElementById('f-admin-assigne')?.value;
+  const bloc=document.getElementById('ar-attente-bloc');
+  if(bloc) bloc.style.display=val==='moi-meme'?'block':'none';
+}
 function updateTbaSrc(){
   const val=document.getElementById('f-tba-src')?.value;
   const box=document.getElementById('tba-src-solde'),valEl=document.getElementById('tba-src-solde-val');
@@ -754,12 +760,12 @@ async function initFormAsync(type){
     const {data:arPending}=await sb.from('operations')
       .select('*').eq('auteur_id',currentUser.id)
       .eq('type_operation','argent_recu').eq('statut_confirmation','en_attente').eq('annulee',false);
-    const bloc=document.getElementById('ar-attente-bloc');
     const sel=document.getElementById('f-ar-lien');
-    if(bloc&&sel&&arPending?.length){
-      bloc.style.display='block';
-      sel.innerHTML='<option value="">-- Ne pas lier (flux admin standard) --</option>'
-        +arPending.map(ar=>`<option value="${ar.id}">${ar.nom_client||'Client'} \u2014 ${fmtM(ar.montant,ar.devise_source)} \u2014 ${fmtD(ar.cree_le)}</option>`).join('');
+    if(sel){
+      sel.innerHTML=arPending?.length
+        ?'<option value="">-- Choisir --</option>'
+          +arPending.map(ar=>`<option value="${ar.id}">${ar.nom_client||'Client'} \u2014 ${fmtM(ar.montant,ar.devise_source)} \u2014 ${fmtD(ar.cree_le)}</option>`).join('')
+        :'<option value="">Aucun argent re\u00e7u en attente</option>';
     }
   }
 
@@ -789,7 +795,22 @@ function buildForm(type){
   // Commission mobile — compte aussi chargé dans initFormAsync
   const commMob=`<div class="form-group" style="margin-top:10px"><label>Commission per\u00e7ue (optionnel)</label><input type="number" id="f-commission" placeholder="0.00" step="0.01" min="0"></div>
     <div class="form-group" style="margin-top:6px"><label>Compte recevant la commission</label><select id="f-commission-compte"><option value="">Chargement\u2026</option></select></div>`;
-  const adminAssigne=`<div class="form-group" style="margin-top:10px"><label>Admin d\u00e9tenant les fonds du client *</label><select id="f-admin-assigne"><option value="">-- Choisir --</option>${usersOpts('admin')}</select><span class="form-hint">Quel administrateur a re\u00e7u l'argent du client ?</span></div>`;
+  const adminAssigne=`<div class="form-group" style="margin-top:10px">
+    <label>Qui d\u00e9tient les fonds du client ? *</label>
+    <select id="f-admin-assigne" onchange="updateAdminAssigneUI()">
+      <option value="">-- Choisir --</option>
+      <option value="moi-meme">\u{1F464} Moi-m\u00eame (j'ai re\u00e7u directement l'argent du client)</option>
+      ${usersOpts('admin')}
+    </select>
+    <span class="form-hint">Choisissez "Moi-m\u00eame" si vous avez re\u00e7u l'argent et enregistr\u00e9 un argent re\u00e7u en mode diff\u00e9r\u00e9</span>
+  </div>
+  <div id="ar-attente-bloc" style="display:none;margin-top:8px">
+    <div class="form-group">
+      <label>Lier \u00e0 l'argent re\u00e7u en attente *</label>
+      <select id="f-ar-lien"><option value="">Chargement\u2026</option></select>
+      <span class="form-hint">S\u00e9lectionnez l'argent re\u00e7u du client que cette distribution va couvrir</span>
+    </div>
+  </div>`;
   const natureEnvoi=`<div class="form-group" style="margin-top:10px"><label>Nature de cet envoi *</label><select id="f-nature-envoi" onchange="toggleDistribSection()"><option value="transit">Argent client en transit (agent doit confirmer)</option><option value="float">Rechargement de caisse (float permanent)</option></select></div>`;
   const distribAttente=`<div id="distrib-attente-box" style="margin-top:14px"><div class="card-title">Distributions en attente assign\u00e9es \u00e0 vous</div><div id="distrib-attente-list">Chargement\u2026</div></div>`;
   const depenseDesc=`<div class="form-group" style="margin-top:10px"><label>Description *</label><input type="text" id="f-client" placeholder="Loyer, carburant, fournitures\u2026"></div>`;
@@ -911,17 +932,8 @@ function buildForm(type){
 
     envoi_employe:`<div class="form-grid">${portfSel}${montantChamp}</div>${soldeDispo}${agentSel}${natureEnvoi}${distribAttente}${notes}`,
 
-    // Distribution avec frais + lien optionnel vers argent_recu différé
-    distribution_beneficiaire:`${sourceSel}${benef}${adminAssigne}
-      <div id="ar-attente-bloc" style="display:none;margin-top:10px">
-        <div class="form-group"><label>Lier à un argent reçu en attente (optionnel)</label>
-          <select id="f-ar-lien">
-            <option value="">-- Ne pas lier (flux admin standard) --</option>
-          </select>
-          <span class="form-hint">Si ce paiement correspond à un argent reçu différé, sélectionnez-le pour lier les deux opérations</span>
-        </div>
-      </div>
-      ${commMob}${fraisChamp}${notes}`,
+    // Distribution avec frais — AR lien intégré dans adminAssigne
+    distribution_beneficiaire:`${sourceSel}${benef}${adminAssigne}${commMob}${fraisChamp}${notes}`,
 
     // Mobile money avec frais
     mobile_money_entrant:`<div class="form-grid">${portfSelSimple}${montantChamp}</div>${mobileSel}${commMob}${fraisChamp}${notes}`,
@@ -1147,7 +1159,9 @@ async function submitOperation(){
   const compteId=document.getElementById('f-mobile')?.value||null;
   const commBrute=parseFloat(document.getElementById('f-commission')?.value)||0;
   const commCompteId=document.getElementById('f-commission-compte')?.value||null;
-  const adminAssigneId=document.getElementById('f-admin-assigne')?.value||null;
+  const adminAssigneRaw=document.getElementById('f-admin-assigne')?.value||null;
+  // 'moi-meme' = l'agent lui-même détient les fonds (argent reçu différé)
+  const adminAssigneId=adminAssigneRaw==='moi-meme'?currentUser.id:adminAssigneRaw;
   const natureEnvoi=document.getElementById('f-nature-envoi')?.value||'transit';
   const notesVal=document.getElementById('f-notes')?.value||'';
   // Nouveaux champs
@@ -1165,11 +1179,12 @@ async function submitOperation(){
   if(['mobile_money_entrant','mobile_money_sortant'].includes(type)&&!compteId){alert('S\u00e9lectionnez un compte Mobile Money');return;}
   if(['envoi_employe','retrait_float'].includes(type)&&!agentId){alert('S\u00e9lectionnez un agent');return;}
   if(type==='distribution_beneficiaire'){
-    if(!adminAssigneId){alert('S\u00e9lectionnez l\'administrateur d\u00e9tenant les fonds');return;}
+    if(!adminAssigneRaw){alert("Choisissez qui d\u00e9tient les fonds du client");return;}
     if(!document.getElementById('f-benef')?.value){alert('Renseignez le nom du b\u00e9n\u00e9ficiaire');return;}
     if(sourceType==='mobile_money'&&!sourceCompteId){alert('S\u00e9lectionnez le compte Mobile Money source');return;}
-  
-    if(comm>0&&!commCompteId){alert('Vous avez renseigné une commission. Sélectionnez le compte Mobile Money qui la reçoit.');return;}
+    if(comm>0&&!commCompteId){alert('Vous avez renseign\u00e9 une commission. S\u00e9lectionnez le compte Mobile Money qui la re\u00e7oit.');return;}
+    // Si l'agent est lui-même le détenteur, un AR lié est obligatoire
+    if(adminAssigneRaw==='moi-meme'&&!arLienId){alert('Vous avez choisi "Moi-m\u00eame". S\u00e9lectionnez l\u2019argent re\u00e7u en attente que cette distribution couvre.');return;}
   }
   if(type==='transfert_interne'){
     if(transfertDir==='portf_to_mob'&&!compteId){alert('S\u00e9lectionnez le compte Mobile Money de destination');return;}
@@ -1366,8 +1381,8 @@ async function submitOperation(){
     }
   }
 
-  // FIX Bug 6 : notifier l'admin quand une distribution lui est assignée
-  if(type==='distribution_beneficiaire'&&adminAssigneId){
+  // Notifier l'admin quand une distribution lui est assignée (pas si l'agent est lui-même)
+  if(type==='distribution_beneficiaire'&&adminAssigneId&&adminAssigneRaw!=='moi-meme'){
     await sb.from('notifications').insert({
       destinataire_id:adminAssigneId,type:'distribution_assignee',lue:false,operation_id:inserted.id,
       titre:`Distribution assign\u00e9e par ${currentUser.nom}`,
