@@ -591,6 +591,9 @@ async function renderDashboard(){
       if(parAdmin.length) alertes+=`<div class="alert alert-warn">&#8987; ${parAdmin.length} distribution(s) en attente de couverture par un administrateur.</div>`;
       if(parMoi.length) alertes+=`<div class="alert alert-warn">&#8987; ${parMoi.length} distribution(s) liée(s) à vos argents reçus différés — à confirmer via le bouton ci-dessus.</div>`;
     }
+    // Distributions "fonds_envoyes" : admin a envoyé, vérification de la notification
+    const {data:distFE}=await sb.from('operations').select('id').eq('auteur_id',currentUser.id).eq('type_operation','distribution_beneficiaire').eq('statut_confirmation','fonds_envoyes').eq('annulee',false);
+    if(distFE?.length&&!pending?.length) alertes+=`<div class="alert alert-info" style="cursor:pointer" onclick="showPage('notifications')">&#128276; ${distFE.length} distribution(s) couvertes par un admin — confirmez la réception dans Notifications</div>`;
   }
   if(currentUser.role==='admin'){
     const {data:distAdmin}=await sb.from('operations').select('id').eq('admin_assigne_id',currentUser.id).eq('type_operation','distribution_beneficiaire').eq('statut_confirmation','en_attente').eq('annulee',false);
@@ -1400,6 +1403,11 @@ async function submitOperation(){
     const distribIds=[...checks].map(c=>c.value);
     if(distribIds.length>0){
       await sb.from('envoi_distributions').insert(distribIds.map(did=>({envoi_id:inserted.id,distribution_id:did})));
+      // Marquer les distributions couvertes comme "fonds_envoyes"
+      // Elles disparaissent de la liste de l'admin et de l'agent
+      if(distribIds.length>0){
+        await sb.from('operations').update({statut_confirmation:'fonds_envoyes'}).in('id',distribIds);
+      }
       await sb.from('notifications').insert({
         destinataire_id:agentId,type:'envoi_a_confirmer',lue:false,operation_id:inserted.id,
         titre:`Fonds envoy\u00e9s par ${currentUser.nom}`,
@@ -1545,8 +1553,10 @@ async function renderHistorique(){
     const dest=userName(o.destinataire_id)||o.nom_beneficiaire||o.nom_client||'\u2014';
     const annulInfo=annulMap[o.id];
     const conv=o.montant_converti?`<br><span style="font-size:10px;color:var(--text2)">\u2192 ${fmtM(o.montant_converti,o.devise_cible)}</span>`:'';
-    const statutLabel=o.statut_confirmation==='confirme'?'Confirm\u00e9':(o.type_operation==='argent_recu'?'En attente (diff\u00e9r\u00e9)':'En attente');
-    const statut=o.statut_confirmation?`<span class="badge badge-${o.statut_confirmation==='confirme'?'green':'amber'}">${statutLabel}</span>`:'\u2014';
+    const statutLabelMap={'confirme':'Confirm\u00e9','fonds_envoyes':'Fonds envoy\u00e9s','en_attente':o.type_operation==='argent_recu'?'En attente (diff\u00e9r\u00e9)':'En attente'};
+    const statutLabel=statutLabelMap[o.statut_confirmation]||o.statut_confirmation||'';
+    const statutColor=o.statut_confirmation==='confirme'?'green':o.statut_confirmation==='fonds_envoyes'?'blue':'amber';
+    const statut=o.statut_confirmation?`<span class="badge badge-${statutColor}">${statutLabel}</span>`:'\u2014';
     const motifAnnul=annulInfo?`<div style="font-size:11px;color:var(--red);margin-top:2px">\u2717 ${annulInfo.motif}</div>`:'';
     // Admin peut annuler n'importe quelle op récente, agent seulement les siennes
     const peutAnnuler=!o.annulee&&(o.auteur_id===currentUser.id||(currentUser.role==='admin'&&new Date(o.cree_le)>limite))&&new Date(o.cree_le)>limite;
@@ -1578,14 +1588,20 @@ async function submitAnnulation(){
   if(motif.length<5){alert('Motif trop court (min 5 caract\u00e8res)');return;}
   const {data:op}=await sb.from('operations').select('*').eq('id',currentAnnulOp.id).single();
   if(!op){alert('Introuvable');return;}
-  // GARDE : distribution avec envoi déjà lié
+  // GARDE : distribution avec envoi déjà lié ou fonds déjà envoyés
   if(op.type_operation==='distribution_beneficiaire'){
-    const {data:lien}=await sb.from('envoi_distributions').select('envoi_id').eq('distribution_id',op.id).maybeSingle();
-    if(lien){
-      const {data:envoi}=await sb.from('operations').select('statut_confirmation,annulee').eq('id',lien.envoi_id).single();
-      if(envoi&&!envoi.annulee){
-        const ok=confirm("Attention : un administrateur a déjà envoyé les fonds pour cette distribution. Annuler ne récupèrera pas cet envoi automatiquement. Continuer ?");
-        if(!ok)return;
+    if(op.statut_confirmation==='fonds_envoyes'||op.statut_confirmation==='confirme'){
+      const statutTxt=op.statut_confirmation==='confirme'?'déjà confirmée':'les fonds ont déjà été envoyés par un admin';
+      const ok=confirm('Attention : cette distribution a un statut avancé ('+statutTxt+'). Annuler inversera le solde mais pas l’envoi de l’admin. Continuer ?');
+      if(!ok)return;
+    } else {
+      const {data:lien}=await sb.from('envoi_distributions').select('envoi_id').eq('distribution_id',op.id).maybeSingle();
+      if(lien){
+        const {data:envoi}=await sb.from('operations').select('statut_confirmation,annulee').eq('id',lien.envoi_id).single();
+        if(envoi&&!envoi.annulee){
+          const ok=confirm("Attention : un administrateur a déjà envoyé les fonds pour cette distribution. Annuler ne récupèrera pas cet envoi automatiquement. Continuer ?");
+          if(!ok)return;
+        }
       }
     }
   }
