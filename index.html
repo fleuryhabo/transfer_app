@@ -1572,6 +1572,10 @@ function updateCommCalc(){
 
 async function submitConfirmation(){
   if(!currentConfirmEnvoi)return;
+  // Protection double-clic
+  const btnConf=document.querySelector('#confirm-overlay .btn-primary');
+  if(btnConf){if(btnConf.disabled)return;btnConf.disabled=true;btnConf.textContent='Confirmation…';}
+  try{
   const recu=parseFloat(document.getElementById('cf-montant')?.value);
   const devise=document.getElementById('cf-devise')?.value;
   const commValidee=parseFloat(document.getElementById('cf-commission')?.value)||0;
@@ -1652,6 +1656,13 @@ async function submitConfirmation(){
   const msgAgents=hasMultipleAgents?` (${agentIds.length} agents notifi\u00e9s)`:'';
   alert('\u2713 R\u00e9ception confirm\u00e9e et soldes mis \u00e0 jour\u00a0!'+msgAgents);
   showPage('dashboard');
+  }catch(err){
+    console.error('submitConfirmation:',err);
+    alert('Erreur lors de la confirmation\u00a0: '+(err?.message||String(err)));
+  }finally{
+    const btn2=document.querySelector('#confirm-overlay .btn-primary');
+    if(btn2){btn2.disabled=false;btn2.textContent='Confirmer la r\u00e9ception';}
+  }
 }
 
 // === HISTORIQUE ===
@@ -1699,8 +1710,12 @@ function closeAnnul(){document.getElementById('annul-overlay').style.display='no
 async function submitAnnulation(){
   const motif=document.getElementById('annul-motif').value.trim();
   if(motif.length<5){alert('Motif trop court (min 5 caract\u00e8res)');return;}
+  const btnAnnul=document.querySelector('#annul-overlay .btn-danger');
+  if(btnAnnul){if(btnAnnul.disabled)return;btnAnnul.disabled=true;btnAnnul.textContent='Annulation\u2026';}
+  try{
   const {data:op}=await sb.from('operations').select('*').eq('id',currentAnnulOp.id).single();
   if(!op){alert('Introuvable');return;}
+  if(op.annulee){alert('Cette op\u00e9ration a d\u00e9j\u00e0 \u00e9t\u00e9 annul\u00e9e.');closeAnnul();return;}
   // GARDE : distribution avec envoi déjà lié ou fonds déjà envoyés
   if(op.type_operation==='distribution_beneficiaire'){
     if(op.statut_confirmation==='fonds_envoyes'||op.statut_confirmation==='confirme'){
@@ -1754,6 +1769,13 @@ async function submitAnnulation(){
   await chargerCaches();closeAnnul();
   alert('Annul\u00e9e\u00a0!'+(linkedCount>0?' ('+linkedCount+' op\u00e9ration(s) li\u00e9e(s) \u00e9galement annul\u00e9e(s))':''));
   renderHistorique();
+  }catch(err){
+    console.error('submitAnnulation:',err);
+    alert('Erreur lors de l\u2019annulation\u00a0: '+(err?.message||String(err)));
+  }finally{
+    const btn2=document.querySelector('#annul-overlay .btn-danger');
+    if(btn2){btn2.disabled=false;btn2.textContent='Confirmer l\u2019annulation';}
+  }
 }
 
 // === NOTIFICATIONS ===
