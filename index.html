@@ -998,8 +998,10 @@ function updateSoldeMobSource(){
   if(!box||!val||!compteId){if(box)box.style.display='none';return;}
   const solde=getSoldeMob(compteId);
   if(solde===null){box.style.display='none';return;}
-  const montant=parseFloat(document.getElementById('f-montant')?.value)||0;
-  box.style.display='flex';val.textContent=fmtM(solde,devise);
+  const montant=parseFloat(document.getElementById('f-montant-mob')?.value)||parseFloat(document.getElementById('f-montant')?.value)||0;
+  const deficit=montant>solde?montant-solde:0;
+  box.style.display='flex';
+  val.textContent=fmtM(solde,devise)+(deficit>0?' \u2192 -'+fmtM(deficit,devise)+' (avance)':'');
   val.className='solde-dispo-val'+(montant>solde?' insuffisant':'');
 }
 
@@ -1048,7 +1050,9 @@ function updateSoldeAffiche(){
   if(!devise){box.style.display='none';return;}
   const solde=getSoldePortf(currentUser.id,devise);
   if(solde===null){box.style.display='none';return;}
-  box.style.display='flex';val.textContent=fmtM(solde,devise);
+  const deficit=montant>solde?montant-solde:0;
+  box.style.display='flex';
+  val.textContent=fmtM(solde,devise)+(deficit>0?' \u2192 -'+fmtM(deficit,devise)+' (avance)':'');
   val.className='solde-dispo-val'+(montant>solde?' insuffisant':'');
 }
 function updateImpactConversion(){
@@ -1172,12 +1176,37 @@ async function submitOperation(){
   // dans une devise différente de l'envoi (BIF vs USD etc.)
   if(type==='distribution_beneficiaire'&&sourceType==='portefeuille'){
     const s=getSoldePortf(currentUser.id,devise);
-    if(s!==null&&montant>s){alert(`Solde insuffisant\u00a0!\nDisponible\u00a0: ${fmtM(s,devise)}`);return;}
+    if(s!==null&&montant>s){
+      const deficit=montant-s;
+      const portfNom=cachePortf.find(p=>p.utilisateur_id===currentUser.id&&p.devise===devise)?.nom||'Portefeuille '+devise;
+      const ok=confirm(
+        '\u26a0 Solde insuffisant sur ' + portfNom +
+        '\nDisponible\u00a0: ' + fmtM(s,devise) +
+        '\nMontant\u00e0 distribuer\u00a0: ' + fmtM(montant,devise) +
+        '\nD\u00e9ficit\u00a0: -' + fmtM(deficit,devise) +
+        '\n\nLe portefeuille passera en n\u00e9gatif.' +
+        '\nConfirmez uniquement si vous avancez ces fonds de votre propre argent.'
+      );
+      if(!ok)return;
+    }
   }
-  // FIX Bug 7 : vérification solde mobile
+  // Distribution mobile : avertissement si solde insuffisant (ne bloque pas — avance possible)
   if(type==='distribution_beneficiaire'&&sourceType==='mobile_money'&&sourceCompteId){
     const s=getSoldeMob(sourceCompteId);
-    if(s!==null&&montant>s){alert(`Solde Mobile Money insuffisant\u00a0!\nDisponible\u00a0: ${fmtM(s,devise)}`);return;}
+    if(s!==null&&montant>s){
+      const deficit=montant-s;
+      const mobInfo=cacheMob.find(m=>m.id===sourceCompteId);
+      const mobNom=(mobInfo?.plateforme||'Mobile Money')+' ('+devise+')';
+      const ok=confirm(
+        '\u26a0 Solde insuffisant sur ' + mobNom +
+        '\nDisponible\u00a0: ' + fmtM(s,devise) +
+        '\nMontant\u00e0 distribuer\u00a0: ' + fmtM(montant,devise) +
+        '\nD\u00e9ficit\u00a0: -' + fmtM(deficit,devise) +
+        '\n\nLe compte Mobile Money passera en n\u00e9gatif.' +
+        '\nConfirmez uniquement si vous avancez ces fonds de votre propre argent.'
+      );
+      if(!ok)return;
+    }
   }
   if(type==='mobile_money_sortant'){
     const sMobSort=getSoldeMob(compteId);
