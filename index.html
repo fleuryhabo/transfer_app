@@ -1098,14 +1098,14 @@ async function chargerDistribEnAttente(){
           :`<span style="font-size:10px;color:var(--text3)">\u2192 ${userName(d.admin_assigne_id)}</span>`);
       html+=`<label style="display:flex;align-items:center;gap:10px;padding:8px;border-bottom:1px solid var(--border);cursor:pointer">
         <input type="checkbox" name="distrib-select" value="${d.id}"
-          data-montant="${d.montant}" data-devise="${d.devise_source}" data-agent-id="${d.auteur_id}" checked>
+          data-montant="${d.montant}" data-devise="${d.devise_source}" data-agent-id="${d.auteur_id}">
         <div style="flex:1"><div style="font-size:13px;font-weight:500">${d.nom_beneficiaire||'B\u00e9n\u00e9ficiaire'} \u2014 <span class="mono">${fmtM(d.montant,d.devise_source)}</span></div>
         <div style="font-size:11px;color:var(--text3);display:flex;align-items:center;gap:6px">${fmtD(d.cree_le)} ${adminLabel}</div></div>
       </label>`;
     });
     html+=`</div>`;
   }
-  html+=`<div style="display:flex;justify-content:space-between;padding:8px;font-weight:500;background:var(--bg3)"><span>Total s\u00e9lectionn\u00e9</span><span id="total-distrib-sel" class="mono text-green">${fmtM(totalAll,'')}</span></div>`;
+  html+=`<div style="display:flex;justify-content:space-between;padding:8px;font-weight:500;background:var(--bg3)"><span>Total s\u00e9lectionn\u00e9</span><span id="total-distrib-sel" class="mono text-green">${fmtM(0,'')}</span></div>`;
   box.innerHTML=html;
   // Sync total dynamique
   const syncDistribTotal=()=>{
