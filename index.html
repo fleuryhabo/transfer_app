@@ -416,6 +416,7 @@ const TYPES_OP={
 };
 const fmtM=(v,d)=>v==null?'\u2014':parseFloat(v).toLocaleString('fr-FR',{minimumFractionDigits:2,maximumFractionDigits:2})+(d?' '+d:'');
 const fmtD=ts=>!ts?'\u2014':new Date(ts).toLocaleString('fr-FR',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'});
+const fmtDateOnly=d=>!d?'\u2014':new Date(d+'T12:00:00').toLocaleDateString('fr-FR',{day:'numeric',month:'long',year:'numeric'});
 const userName=id=>allUsers.find(u=>u.id===id)?.nom||'\u2014';
 // Helper : extraire UUID pur depuis valeur préfixée du formulaire
 // portf_BIF → null (portf identifié par userId+devise, pas UUID)
@@ -1816,7 +1817,7 @@ async function renderNotifications(){
     await sb.from('notifications').update({lue:true}).eq('destinataire_id',currentUser.id).eq('lue',false);
   }
   await refreshNotifBadge(); // Recalcule le badge correctement
-  const couleurs={envoi_a_confirmer:'var(--accent)',distribution_assignee:'var(--amber)',annulation:'var(--red)',confirmation_recue:'var(--green)',commission_recue:'var(--teal)'};
+  const couleurs={envoi_a_confirmer:'var(--accent)',distribution_assignee:'var(--amber)',annulation:'var(--red)',confirmation_recue:'var(--green)',commission_recue:'var(--teal)',cloture_ecart:'var(--red)'};
   const rows=(notifs||[]).map(n=>{
     const btnConfirm=n.type==='envoi_a_confirmer'&&n.operation_id?`<button class="btn btn-primary btn-sm" style="margin-top:8px" onclick="openConfirmation('${n.operation_id}')">Confirmer la r\u00e9ception</button>`:'';
     return `<div class="card" style="margin-bottom:10px;border-left:3px solid ${couleurs[n.type]||'var(--border)'}">
@@ -1846,36 +1847,188 @@ async function renderSoldes(){
 }
 
 // === CLÔTURE ===
+
+// === CLÔTURE ===
+function renderHistClot(hist){
+  if(!hist?.length) return '';
+  const rows=(hist||[]).slice(0,7).map(h=>{
+    const ecarts=Object.entries(h.ecart||{});
+    const nbE=ecarts.filter(([,v])=>parseFloat(v)!==0).length;
+    const ecartStr=ecarts.filter(([,v])=>parseFloat(v)!==0).map(([k,v])=>`${k}: ${parseFloat(v)>=0?'+':''}${fmtM(v,'')}`).join(', ')||'\u2014';
+    return `<tr><td style="font-size:12px">${fmtDateOnly(h.date_cloture)}</td>
+      <td><span class="badge badge-${nbE>0?'amber':'green'}">${nbE>0?nbE+' \u00e9cart(s)':'\u2713 OK'}</span></td>
+      <td style="font-size:12px;color:${nbE>0?'var(--red)':'var(--text3)'}">${ecartStr}</td>
+      <td style="font-size:12px;color:var(--text2)">${h.notes||'\u2014'}</td></tr>`;
+  }).join('');
+  return `<div class="card mt-4"><div class="card-title">Historique des cl\u00f4tures (7 derniers jours)</div>
+    <div class="table-wrap" style="border:none"><table>
+    <thead><tr><th>Date</th><th>Statut</th><th>\u00c9carts</th><th>Notes / Motif</th></tr></thead>
+    <tbody>${rows}</tbody></table></div></div>`;
+}
+function renderTeamClot(allUsers,allClotures){
+  if(!allUsers) return '';
+  const teamUsers=(allUsers||[]).filter(u=>u.role!=='superadmin');
+  const nCloture=(allClotures||[]).filter(c=>teamUsers.some(u=>u.id===c.utilisateur_id)).length;
+  const nEcart=(allClotures||[]).filter(c=>Object.values(c.ecart||{}).some(v=>parseFloat(v)!==0)).length;
+  const rows=teamUsers.map(u=>{
+    const cl=(allClotures||[]).find(c=>c.utilisateur_id===u.id);
+    if(!cl) return `<tr><td style="font-weight:500">${u.nom}</td><td><span class="badge badge-gray">Non cl\u00f4tur\u00e9</span></td><td class="text-muted">\u2014</td><td class="text-muted">\u2014</td></tr>`;
+    const ecarts=Object.entries(cl.ecart||{});
+    const nbE=ecarts.filter(([,v])=>parseFloat(v)!==0).length;
+    const ecartStr=ecarts.filter(([,v])=>parseFloat(v)!==0).map(([k,v])=>`${k}: ${parseFloat(v)>=0?'+':''}${fmtM(v,'')}`).join(', ')||'\u2014';
+    return `<tr><td style="font-weight:500">${u.nom}</td>
+      <td><span class="badge badge-${nbE>0?'amber':'green'}">${nbE>0?nbE+' \u00e9cart(s)':'\u2713 OK'}</span></td>
+      <td style="font-size:12px;color:${nbE>0?'var(--red)':'var(--text3)'}">${ecartStr}</td>
+      <td style="font-size:12px;color:var(--text2)">${cl.notes||'\u2014'}</td></tr>`;
+  }).join('');
+  return `<div class="card" style="margin-bottom:20px;border-left:3px solid var(--accent)">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+      <div class="card-title" style="margin:0">Cl\u00f4tures de l\u2019\u00e9quipe</div>
+      <div style="display:flex;gap:12px">
+        <span class="badge badge-${nCloture===teamUsers.length?'green':'amber'}">${nCloture}/${teamUsers.length} cl\u00f4tur\u00e9s</span>
+        ${nEcart>0?`<span class="badge badge-red">${nEcart} \u00e9cart(s)</span>`:'<span class="badge badge-green">Aucun \u00e9cart</span>'}
+      </div>
+    </div>
+    <div class="table-wrap" style="border:none"><table>
+    <thead><tr><th>Utilisateur</th><th>Statut</th><th>\u00c9carts</th><th>Notes</th></tr></thead>
+    <tbody>${rows}</tbody></table></div></div>`;
+}
+function updateEcartLive(){
+  const inputs=document.querySelectorAll('#page-cloture [data-calcule]');
+  let hasEcart=false;let anyFilled=false;let detailHtml='';
+  inputs.forEach(inp=>{
+    if(inp.value==='') return;
+    anyFilled=true;
+    const val=parseFloat(inp.value)||0;
+    const calc=parseFloat(inp.dataset.calcule)||0;
+    const ecart=+(val-calc).toFixed(4);
+    const hint=document.getElementById('hint-'+inp.id);
+    if(hint){
+      hint.style.display='block';
+      if(ecart===0){hint.textContent='\u2713 Correct';hint.style.color='var(--green)';}
+      else{hint.textContent=(ecart>0?'+':'')+fmtM(ecart,'')+' par rapport au calcul\u00e9';hint.style.color=ecart>0?'var(--amber)':'var(--red)';hasEcart=true;}
+      detailHtml+=`<div class="impact-row"><span class="name">${inp.dataset.label}</span>
+        <span class="mono" style="color:${ecart===0?'var(--green)':ecart>0?'var(--amber)':'var(--red)'}">${ecart>=0?'+':''}${fmtM(ecart,'')}</span></div>`;
+    }
+  });
+  const box=document.getElementById('ecart-resume');
+  const det=document.getElementById('ecart-resume-detail');
+  if(box) box.style.display=hasEcart&&anyFilled?'block':'none';
+  if(det) det.innerHTML=detailHtml;
+  const nl=document.getElementById('notes-label');
+  const ni=document.getElementById('cloture-notes');
+  if(nl) nl.textContent=hasEcart?'Motif des \u00e9carts * (obligatoire)':'Observations (facultatif)';
+  if(ni) ni.placeholder=hasEcart?'Expliquez les \u00e9carts constat\u00e9s\u2026 (obligatoire)':'Billet endommag\u00e9, erreur de rendu, etc.';
+}
 async function renderCloture(){
   const el=document.getElementById('page-cloture');
+  el.innerHTML='<div class="page-content"><div class="loading">Chargement\u2026</div></div>';
   const today=new Date().toISOString().split('T')[0];
-  const {data:existing}=await sb.from('clotures_journalieres').select('*').eq('utilisateur_id',currentUser.id).eq('date_cloture',today).maybeSingle();
+  const isAdmin=currentUser.role==='admin';
+  const loads=[
+    sb.from('clotures_journalieres').select('*').eq('utilisateur_id',currentUser.id).eq('date_cloture',today).maybeSingle(),
+    sb.from('operations').select('*').gte('cree_le',today+'T00:00:00').lte('cree_le',today+'T23:59:59').eq('auteur_id',currentUser.id).eq('annulee',false),
+    sb.from('operations').select('id').eq('auteur_id',currentUser.id).eq('type_operation','argent_recu').eq('statut_confirmation','en_attente').eq('annulee',false),
+    sb.from('operations').select('id').eq('auteur_id',currentUser.id).eq('type_operation','distribution_beneficiaire').eq('statut_confirmation','en_attente').eq('annulee',false),
+    sb.from('clotures_journalieres').select('*').eq('utilisateur_id',currentUser.id).order('date_cloture',{ascending:false}).limit(8)
+  ];
+  if(isAdmin){loads.push(sb.from('utilisateurs').select('id,nom,role').eq('actif',true).order('nom'));loads.push(sb.from('clotures_journalieres').select('*').eq('date_cloture',today));}
+  const results=await Promise.all(loads);
+  const [{data:existing},{data:opsToday},{data:arPending},{data:distPending},{data:hist}]=results;
+  const allUsers=isAdmin?results[5]?.data:null;
+  const allClotures=isAdmin?results[6]?.data:null;
+  await chargerCaches();
   const portf=cachePortf.filter(p=>p.utilisateur_id===currentUser.id);
   const mob=cacheMob.filter(m=>m.utilisateur_id===currentUser.id);
+  const ops=opsToday||[];
+  const teamHtml=isAdmin?renderTeamClot(allUsers,allClotures):'';
+  const nbClients=ops.filter(o=>o.type_operation==='argent_recu').length;
+  const nbDist=ops.filter(o=>o.type_operation==='distribution_beneficiaire').length;
+  const totalComm=ops.filter(o=>['commission','commission_mobile','commission_transfert'].includes(o.type_operation)).reduce((s,o)=>s+parseFloat(o.montant),0);
+  const pendingAlert=(arPending?.length||distPending?.length)?
+    `<div class="alert alert-warn">\u26a0 ${arPending?.length||0} argent(s) re\u00e7u(s) diff\u00e9r\u00e9(s) + ${distPending?.length||0} distribution(s) non confirm\u00e9e(s) non encore dans vos soldes calcul\u00e9s.</div>`:'';
   if(existing){
-    const eR=Object.entries(existing.ecart||{}).map(([k,v])=>`<div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border)"><span class="text-muted">${k}</span><span class="mono ${parseFloat(v)===0?'text-muted':parseFloat(v)>0?'text-green':'text-red'}">${parseFloat(v)>=0?'+':''}${fmtM(v,'')}</span></div>`).join('');
-    el.innerHTML=`<div class="page-header"><div class="page-title">Cl\u00f4ture du jour</div></div><div class="page-content"><div class="alert alert-success">\u2713 Cl\u00f4ture effectu\u00e9e.</div><div class="card"><div class="card-title">\u00c9carts constat\u00e9s</div>${eR||'<div class="text-muted">Aucun \u00e9cart</div>'}</div></div>`;return;
+    const eR=Object.entries(existing.ecart||{}).map(([k,v])=>`<tr>
+      <td>${k}</td><td class="mono ${parseFloat(v)===0?'text-muted':parseFloat(v)>0?'text-green':'text-red'}">${parseFloat(v)>=0?'+':''}${fmtM(v,'')}</td>
+      <td>${parseFloat(v)!==0?'\u26a0 \u00c9cart':'\u2713'}</td></tr>`).join('');
+    el.innerHTML=`<div class="page-header"><div class="page-title">Cl\u00f4ture du ${fmtDateOnly(today)}</div></div>
+    <div class="page-content">${teamHtml}
+      <div class="alert alert-success">\u2713 Cl\u00f4ture effectu\u00e9e \u00e0 ${fmtD(existing.cree_le)}</div>
+      <div class="stats-grid"><div class="stat-card"><div class="stat-label">Op\u00e9rations</div><div class="stat-value" style="color:var(--accent)">${ops.length}</div></div>
+        <div class="stat-card"><div class="stat-label">Clients</div><div class="stat-value" style="color:var(--teal)">${nbClients}</div></div>
+        <div class="stat-card"><div class="stat-label">Commissions</div><div class="stat-value" style="color:var(--green)">${fmtM(totalComm,'')}</div></div></div>
+      <div class="card mt-4"><div class="card-title">\u00c9carts constat\u00e9s</div>
+        <div class="table-wrap" style="border:none"><table><thead><tr><th>Compte</th><th>\u00c9cart</th><th></th></tr></thead>
+        <tbody>${eR||'<tr><td colspan="3" class="empty-state">Aucun \u00e9cart</td></tr>'}</tbody></table></div>
+        ${existing.notes?`<div style="margin-top:12px;padding:12px;background:var(--bg3);border-radius:var(--r);font-size:13px"><strong>Notes/Motif :</strong> ${existing.notes}</div>`:''}</div>
+      ${renderHistClot(hist)}</div>`;
+    return;
   }
-  const pI=portf.map(p=>`<div class="form-group"><label>${p.devise} \u2014 calcul\u00e9\u00a0: <span class="mono text-green">${fmtM(p.solde_actuel,'')}</span></label><input type="number" id="cp-${p.devise}" value="${parseFloat(p.solde_actuel).toFixed(2)}" step="0.01"></div>`).join('');
-  const mI=mob.map(m=>`<div class="form-group"><label>${m.plateforme} (${m.devise}) \u2014 calcul\u00e9\u00a0: <span class="mono" style="color:var(--purple)">${fmtM(m.solde_actuel,'')}</span></label><input type="number" id="cm-${m.id}" value="${parseFloat(m.solde_actuel).toFixed(2)}" step="0.01"></div>`).join('');
-  el.innerHTML=`<div class="page-header"><div class="page-title">Cl\u00f4ture du jour</div><div class="page-sub">Comptez votre argent et entrez les montants r\u00e9els</div></div>
-  <div class="page-content"><div class="alert alert-info">Comparez les soldes calcul\u00e9s par l'application avec ce que vous avez r\u00e9ellement en caisse.</div>
-  ${pI?`<div class="card"><div class="card-title">Portefeuilles physiques</div><div class="form-grid">${pI}</div></div>`:''} 
-  ${mI?`<div class="card mt-4"><div class="card-title">Comptes Mobile Money</div><div class="form-grid">${mI}</div></div>`:''}
-  <div class="card mt-4"><div class="card-title">Notes</div><textarea id="cloture-notes" placeholder="Observations\u2026"></textarea></div>
-  <div style="margin-top:16px"><button class="btn btn-primary" onclick="submitCloture()">Valider la cl\u00f4ture</button></div></div>`;
+  const pI=portf.map(p=>`<div class="form-group">
+    <label>${p.nom||'Portefeuille'} <span class="badge badge-gray">${p.devise}</span>
+      <span class="text-muted" style="font-size:11px;margin-left:8px">Calcul\u00e9\u00a0: <span class="mono text-green">${fmtM(p.solde_actuel,'')}</span></span></label>
+    <input type="number" id="cp-${p.devise}" placeholder="Entrez le montant r\u00e9ellement compt\u00e9\u2026" step="0.01"
+      data-calcule="${parseFloat(p.solde_actuel)}" data-label="${p.nom||'Portef. '+p.devise}" oninput="updateEcartLive()">
+    <div id="hint-cp-${p.devise}" class="form-hint" style="display:none;font-weight:500"></div>
+  </div>`).join('');
+  const mI=mob.map(m=>`<div class="form-group">
+    <label>${m.plateforme} <span class="badge badge-purple">${m.devise}</span>
+      <span class="text-muted" style="font-size:11px;margin-left:8px">Calcul\u00e9\u00a0: <span class="mono" style="color:var(--purple)">${fmtM(m.solde_actuel,'')}</span></span></label>
+    <input type="number" id="cm-${m.id}" placeholder="V\u00e9rifiez sur votre t\u00e9l\u00e9phone et entrez\u2026" step="0.01"
+      data-calcule="${parseFloat(m.solde_actuel)}" data-label="${m.plateforme} (${m.devise})" oninput="updateEcartLive()">
+    <div id="hint-cm-${m.id}" class="form-hint" style="display:none;font-weight:500"></div>
+  </div>`).join('');
+  el.innerHTML=`<div class="page-header"><div class="page-title">Cl\u00f4ture du ${fmtDateOnly(today)}</div>
+    <div class="page-sub">Comptez votre argent r\u00e9el et comparez avec l\u2019application</div></div>
+  <div class="page-content">${teamHtml}
+    <div class="stats-grid" style="margin-bottom:16px">
+      <div class="stat-card"><div class="stat-label">Op\u00e9rations du jour</div><div class="stat-value" style="color:var(--accent)">${ops.length}</div></div>
+      <div class="stat-card"><div class="stat-label">Clients servis</div><div class="stat-value" style="color:var(--teal)">${nbClients}</div></div>
+      <div class="stat-card"><div class="stat-label">Distributions</div><div class="stat-value" style="color:var(--purple)">${nbDist}</div></div>
+      <div class="stat-card"><div class="stat-label">Commissions</div><div class="stat-value" style="color:var(--green)">${fmtM(totalComm,'')}</div></div>
+    </div>
+    ${pendingAlert}
+    ${portf.length?`<div class="card"><div class="card-title">Portefeuilles physiques \u2014 Comptez r\u00e9ellement</div><div class="form-grid">${pI}</div></div>`:''}
+    ${mob.length?`<div class="card mt-4"><div class="card-title">Comptes Mobile Money \u2014 V\u00e9rifiez sur votre t\u00e9l\u00e9phone</div><div class="form-grid">${mI}</div></div>`:''}
+    <div id="ecart-resume" class="card mt-4" style="display:none;border-left:3px solid var(--red)">
+      <div class="card-title">\u26a0 \u00c9carts d\u00e9tect\u00e9s en temps r\u00e9el</div>
+      <div id="ecart-resume-detail"></div>
+    </div>
+    <div class="card mt-4">
+      <div class="card-title" id="notes-label">Observations (facultatif)</div>
+      <textarea id="cloture-notes" placeholder="Billet endommag\u00e9, erreur de rendu\u2026" style="min-height:80px;width:100%;box-sizing:border-box"></textarea>
+    </div>
+    <div style="margin-top:16px"><button class="btn btn-primary" onclick="submitCloture()">Valider la cl\u00f4ture</button></div>
+    ${renderHistClot(hist)}</div>`;
 }
 async function submitCloture(){
   const today=new Date().toISOString().split('T')[0];
   const portf=cachePortf.filter(p=>p.utilisateur_id===currentUser.id);
   const mob=cacheMob.filter(m=>m.utilisateur_id===currentUser.id);
   const phys={},mobil={},calc={},ecart={};
-  portf.forEach(p=>{const d=parseFloat(document.getElementById('cp-'+p.devise)?.value)||0;phys[p.devise]=d;calc['phys_'+p.devise]=parseFloat(p.solde_actuel);ecart[p.devise+' (physique)']=+(d-parseFloat(p.solde_actuel)).toFixed(4);});
-  mob.forEach(m=>{const d=parseFloat(document.getElementById('cm-'+m.id)?.value)||0;mobil[m.plateforme+'_'+m.devise]=d;ecart[m.plateforme+' ('+m.devise+')']=+(d-parseFloat(m.solde_actuel)).toFixed(4);});
-  const {error}=await sb.from('clotures_journalieres').insert({utilisateur_id:currentUser.id,date_cloture:today,solde_physique_declare:phys,solde_mobile_declare:mobil,solde_calcule:calc,ecart,notes:document.getElementById('cloture-notes')?.value||null});
+  let allFilled=true;
+  portf.forEach(p=>{const inp=document.getElementById('cp-'+p.devise);if(!inp||inp.value===''){allFilled=false;return;}const d=parseFloat(inp.value)||0;phys[p.devise]=d;calc['phys_'+p.devise]=parseFloat(p.solde_actuel);ecart[p.devise+' (physique)']=+(d-parseFloat(p.solde_actuel)).toFixed(4);});
+  mob.forEach(m=>{const inp=document.getElementById('cm-'+m.id);if(!inp||inp.value===''){allFilled=false;return;}const d=parseFloat(inp.value)||0;mobil[m.plateforme+'_'+m.devise]=d;ecart[m.plateforme+' ('+m.devise+')']=+(d-parseFloat(m.solde_actuel)).toFixed(4);});
+  if(!allFilled){alert('Veuillez entrer les montants pour tous les comptes avant de valider.');return;}
+  const hasEcart=Object.values(ecart).some(v=>parseFloat(v)!==0);
+  const notes=document.getElementById('cloture-notes')?.value||null;
+  if(hasEcart&&(!notes||notes.trim().length<5)){
+    alert('\u26a0 Des \u00e9carts ont \u00e9t\u00e9 d\u00e9tect\u00e9s. Veuillez expliquer le ou les \u00e9carts dans le champ "Motif des \u00e9carts" (min 5 caract\u00e8res).');
+    document.getElementById('cloture-notes')?.focus();return;
+  }
+  const {error}=await sb.from('clotures_journalieres').insert({utilisateur_id:currentUser.id,date_cloture:today,solde_physique_declare:phys,solde_mobile_declare:mobil,solde_calcule:calc,ecart,notes});
   if(error){alert('Erreur\u00a0: '+error.message);return;}
-  alert('\u2713 Cl\u00f4ture enregistr\u00e9e\u00a0!');renderCloture();
+  if(hasEcart){
+    const {data:admins}=await sb.from('utilisateurs').select('id').eq('role','admin').eq('actif',true).neq('id',currentUser.id);
+    if(admins?.length){
+      const ecartStr=Object.entries(ecart).filter(([,v])=>parseFloat(v)!==0).map(([k,v])=>`${k}: ${parseFloat(v)>=0?'+':''}${fmtM(v,'')}`).join(', ');
+      await sb.from('notifications').insert(admins.map(a=>({destinataire_id:a.id,type:'cloture_ecart',lue:false,titre:'\u26a0 \u00c9cart cl\u00f4ture \u2014 '+currentUser.nom,message:ecartStr+(notes?'\nMotif: '+notes:'')})));
+    }
+  }
+  alert(hasEcart?'\u2713 Cl\u00f4ture enregistr\u00e9e avec \u00e9carts. Les administrateurs ont \u00e9t\u00e9 notifi\u00e9s.':'\u2713 Cl\u00f4ture enregistr\u00e9e \u2014 Aucun \u00e9cart !');
+  renderCloture();
 }
+
 
 // === TAUX ===
 async function renderTaux(){
