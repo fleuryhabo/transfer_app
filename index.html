@@ -680,6 +680,19 @@ function updateDepenseSource(){
   valEl.className='solde-dispo-val';
 }
 
+// Résumé en temps réel du transfert entre pairs (montant + frais)
+function updateTbaTotal(){
+  const montant=parseFloat(document.getElementById('f-montant')?.value)||0;
+  const frais=parseFloat(document.getElementById('f-frais')?.value)||0;
+  const box=document.getElementById('tba-total-box');
+  if(!box)return;
+  if(montant<=0){box.style.display='none';return;}
+  box.style.display='block';
+  const dEl=document.getElementById('tba-total-dest'),fEl=document.getElementById('tba-total-frais'),sEl=document.getElementById('tba-total-src');
+  if(dEl)dEl.textContent=fmtM(montant,'');
+  if(fEl)fEl.textContent=frais>0?'-'+fmtM(frais,''):'Aucun';
+  if(sEl)sEl.textContent='-'+fmtM(montant+frais,'');
+}
 // Toggle immédiat/différé pour argent_recu agent
 function updateModeReception(){
   const mode=document.getElementById('f-mode-reception')?.value;
@@ -856,8 +869,13 @@ function buildForm(type){
 
   // ---- Éléments communs ----
   const fraisChamp=`<div class="form-group" style="margin-top:10px"><label>Frais (optionnel)</label>
-    <input type="number" id="f-frais" placeholder="0.00" step="0.01" min="0">
-    <span class="form-hint">Frais prélevés sur cette opération</span></div>`;
+    <input type="number" id="f-frais" placeholder="0.00" step="0.01" min="0" oninput="updateTbaTotal()">
+    <span class="form-hint">Frais à la charge de l’expéditeur (déduits de votre compte)</span></div>
+    <div id="tba-total-box" style="display:none;margin-top:6px;padding:10px;background:var(--bg3);border-radius:var(--r);font-size:13px">
+      <div style="display:flex;justify-content:space-between"><span>Montant reçu par le destinataire</span><span class="mono text-green" id="tba-total-dest"></span></div>
+      <div style="display:flex;justify-content:space-between;color:var(--red)"><span>Frais à votre charge</span><span class="mono" id="tba-total-frais"></span></div>
+      <div style="display:flex;justify-content:space-between;font-weight:600;border-top:1px solid var(--border);padding-top:6px;margin-top:6px"><span>Total débité sur votre compte</span><span class="mono" id="tba-total-src"></span></div>
+    </div>`;
 
   // Destination des fonds (portf OU mobile)
   const allPortfOpts=cachePortf.filter(p=>p.utilisateur_id===currentUser.id)
@@ -912,10 +930,12 @@ function buildForm(type){
       <span id="tba-src-solde-val" class="solde-dispo-val"></span>
     </div></div>`;
 
-  const tbaDestSel=`<div class="form-group" style="margin-top:10px"><label>Agent destinataire *</label>
+  const tbaRoleTarget=currentUser.role==='admin'?'admin':'agent';
+  const tbaDestLabel=currentUser.role==='admin'?'Admin destinataire *':'Agent destinataire *';
+  const tbaDestSel=`<div class="form-group" style="margin-top:10px"><label>${tbaDestLabel}</label>
     <select id="f-tba-dest-agent" onchange="chargerComptesTba()">
       <option value="">-- Choisir --</option>
-      ${allUsers.filter(u=>u.id!==currentUser.id&&u.role==='agent').map(u=>`<option value="${u.id}">${u.nom}</option>`).join('')}
+      ${allUsers.filter(u=>u.id!==currentUser.id&&u.role===tbaRoleTarget).map(u=>`<option value="${u.id}">${u.nom}</option>`).join('')}
     </select></div>
     <div class="form-group" style="margin-top:8px"><label>Compte destinataire *</label>
     <select id="f-tba-dest-compte"><option value="">-- Choisir d'abord l'agent --</option></select></div>`;
@@ -960,7 +980,7 @@ function buildForm(type){
 
     // Transfert entre agents
     transfert_entre_agents:`${tbaSourceSel}<div class="form-grid" style="margin-top:10px">
-      <div class="form-group"><label>Montant *</label><input type="number" id="f-montant" placeholder="0.00" step="0.01" min="0"></div>
+      <div class="form-group"><label>Montant *</label><input type="number" id="f-montant" placeholder="0.00" step="0.01" min="0" oninput="updateTbaTotal()"></div>
       <div class="form-group"><label>Devise</label><select id="f-devise">${devisesOpts()}</select></div>
     </div>${tbaDestSel}${fraisChamp}${notes}`
   };
@@ -1145,6 +1165,10 @@ async function submitOperation(){
     const mob=cacheMob.find(m=>m.id===mobSrcId);
     devise=mob?.devise||devise;
   }
+  // Lecture des champs TBA (avant les validations)
+  const tbaSrc=document.getElementById('f-tba-src')?.value||null;
+  const tbaDestAgent=document.getElementById('f-tba-dest-agent')?.value||null;
+  const tbaDestCompte=document.getElementById('f-tba-dest-compte')?.value||null;
   if(!montant||montant<=0){alert('Montant invalide');return;}
   if(!devise){alert('S\u00e9lectionnez une devise ou un compte source');return;}
 
@@ -1238,14 +1262,13 @@ async function submitOperation(){
   const comm=commBrute; // alias pour les opérations non-argent_recu
   const destRecep=document.getElementById('f-dest-recep')?.value||null;
   const depenseSrc=document.getElementById('f-depense-source')?.value||null;
-  const tbaSrc=document.getElementById('f-tba-src')?.value||null;
-  const tbaDestAgent=document.getElementById('f-tba-dest-agent')?.value||null;
-  const tbaDestCompte=document.getElementById('f-tba-dest-compte')?.value||null;
+  // tbaSrc/tbaDestAgent/tbaDestCompte déplacés avant les validations
 
   // Variables lues tôt car utilisées dans les validations
   const modeReception=document.getElementById('f-mode-reception')?.value||'immediat';
   const isDeferred=(type==='argent_recu'&&currentUser.role==='agent'&&modeReception==='differe');
   const arLienId=document.getElementById('f-ar-lien')?.value||null;
+  // TBA : lectures déplacées en haut de submitOperation
 
   // Validations obligatoires
   if(['mobile_money_entrant','mobile_money_sortant'].includes(type)&&!compteId){alert('S\u00e9lectionnez un compte Mobile Money');return;}
@@ -1349,6 +1372,11 @@ async function submitOperation(){
     else if(destRecepType==='mob'&&destRecepCompte) impacts.push({type:'mob',compteId:destRecepCompte,delta:montant});
   } else {
     impacts=calculerImpacts(type,params);
+    // TBA : frais à la charge de l'expéditeur → débit source = montant + frais
+    if(type==='transfert_entre_agents'&&frais>0&&impacts.length>0){
+      impacts=[...impacts];
+      impacts[0]={...impacts[0],delta:impacts[0].delta-frais};
+    }
   }
 
   // Notes enrichies
