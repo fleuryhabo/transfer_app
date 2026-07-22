@@ -1387,7 +1387,7 @@ async function submitOperation(){
   const op={
     auteur_id:currentUser.id,type_operation:type,montant,devise_source:devise,
     devise_cible,taux_change,montant_converti,expediteur_id:currentUser.id,
-    destinataire_id:agentId||null,compte_mobile_id:(type!=='transfert_interne'?compteId:null)||null,
+    destinataire_id:finalAgentId||null,compte_mobile_id:(type!=='transfert_interne'?compteId:null)||null,
     nom_client:document.getElementById('f-client')?.value||null,
     nom_beneficiaire:document.getElementById('f-benef')?.value||null,
     notes:notes||null,annulee:false,impacts_json:JSON.stringify(impacts),
@@ -1406,6 +1406,15 @@ async function submitOperation(){
     await sb.from('taux_change').insert({saisi_par:currentUser.id,devise_de:devise,devise_vers:devise_cible,taux:taux_change});
   await appliquerImpacts(impacts);
 
+
+  // Notification au destinataire TBA (pas de confirmation requise, transfert immédiat)
+  if(type==='transfert_entre_agents'&&finalAgentId&&inserted){
+    await sb.from('notifications').insert({
+      destinataire_id:finalAgentId,type:'transfert_recu',lue:false,operation_id:inserted.id,
+      titre:'Transfert re\u00e7u de '+currentUser.nom,
+      message:'Vous avez re\u00e7u '+fmtM(montant,devise)+' sur votre compte'+(frais>0?' (frais de '+fmtM(frais,devise)+' \u00e0 la charge de l\u2019exp\u00e9diteur)':'')+'.'
+    });
+  }
   // Commission argent_recu AGENT : seulement en mode immédiat
   // (en mode différé, la commission est calculée à la confirmation)
   if(!isDeferred&&commBrute>0&&type==='argent_recu'&&currentUser.role==='agent'){
@@ -1845,7 +1854,7 @@ async function renderNotifications(){
     await sb.from('notifications').update({lue:true}).eq('destinataire_id',currentUser.id).eq('lue',false);
   }
   await refreshNotifBadge(); // Recalcule le badge correctement
-  const couleurs={envoi_a_confirmer:'var(--accent)',distribution_assignee:'var(--amber)',annulation:'var(--red)',confirmation_recue:'var(--green)',commission_recue:'var(--teal)',cloture_ecart:'var(--red)'};
+  const couleurs={envoi_a_confirmer:'var(--accent)',distribution_assignee:'var(--amber)',annulation:'var(--red)',confirmation_recue:'var(--green)',commission_recue:'var(--teal)',cloture_ecart:'var(--red)',transfert_recu:'var(--teal)'};
   const rows=(notifs||[]).map(n=>{
     const btnConfirm=n.type==='envoi_a_confirmer'&&n.operation_id?`<button class="btn btn-primary btn-sm" style="margin-top:8px" onclick="openConfirmation('${n.operation_id}')">Confirmer la r\u00e9ception</button>`:'';
     return `<div class="card" style="margin-bottom:10px;border-left:3px solid ${couleurs[n.type]||'var(--border)'}">
